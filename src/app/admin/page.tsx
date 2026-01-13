@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useMutation, useAction } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useState } from "react";
 import { Id } from "../../../convex/_generated/dataModel";
@@ -18,17 +18,24 @@ const RELATIONSHIPS = [
 
 type Relationship = (typeof RELATIONSHIPS)[number]["value"];
 
+// Get base URL for invite links
+function getBaseUrl() {
+  if (typeof window !== "undefined") {
+    return window.location.origin;
+  }
+  return process.env.NEXT_PUBLIC_SITE_URL || "https://levsarah.vercel.app";
+}
+
 export default function AdminPage() {
   const isAdmin = useQuery(api.admin.isAdmin);
   const users = useQuery(api.admin.getUsers);
   const invites = useQuery(api.admin.getInvites);
 
   const createInvite = useMutation(api.admin.createInvite);
-  const sendInvite = useAction(api.admin.sendInvite);
   const setAdmin = useMutation(api.admin.setAdmin);
   const deleteUser = useMutation(api.admin.deleteUser);
   const deleteInvite = useMutation(api.admin.deleteInvite);
-  const resendInvite = useMutation(api.admin.resendInvite);
+  const regenerateInviteCode = useMutation(api.admin.regenerateInviteCode);
 
   const [activeTab, setActiveTab] = useState<"users" | "invites">("users");
   const [showInviteForm, setShowInviteForm] = useState(false);
@@ -39,6 +46,7 @@ export default function AdminPage() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successLink, setSuccessLink] = useState<string | null>(null);
 
   // Loading state
   if (isAdmin === undefined) {
@@ -64,20 +72,24 @@ export default function AdminPage() {
   const handleCreateInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSuccessLink(null);
     setIsSubmitting(true);
 
     try {
-      const inviteId = await createInvite({
+      const result = await createInvite({
         name: inviteForm.name,
         phone: inviteForm.phone,
         relationship: inviteForm.relationship,
       });
 
-      // Send WhatsApp invite
-      await sendInvite({ inviteId });
+      // Generate invite link
+      const inviteUrl = `${getBaseUrl()}/invite/${result.inviteCode}`;
 
+      // Copy to clipboard
+      await navigator.clipboard.writeText(inviteUrl);
+
+      setSuccessLink(inviteUrl);
       setInviteForm({ name: "", phone: "", relationship: "בן" });
-      setShowInviteForm(false);
     } catch (err: any) {
       setError(err.message || "שגיאה ביצירת ההזמנה");
     } finally {
@@ -85,12 +97,24 @@ export default function AdminPage() {
     }
   };
 
-  const handleResendInvite = async (inviteId: Id<"invites">) => {
+  const handleCopyInviteLink = async (inviteCode: string) => {
     try {
-      await resendInvite({ inviteId });
-      await sendInvite({ inviteId });
+      const inviteUrl = `${getBaseUrl()}/invite/${inviteCode}`;
+      await navigator.clipboard.writeText(inviteUrl);
+      alert("הקישור הועתק ללוח!");
     } catch (err: any) {
-      alert(err.message || "שגיאה בשליחה מחדש");
+      alert("שגיאה בהעתקה");
+    }
+  };
+
+  const handleRegenerateInvite = async (inviteId: Id<"invites">) => {
+    try {
+      const result = await regenerateInviteCode({ inviteId });
+      const inviteUrl = `${getBaseUrl()}/invite/${result.inviteCode}`;
+      await navigator.clipboard.writeText(inviteUrl);
+      alert("קישור חדש נוצר והועתק ללוח!");
+    } catch (err: any) {
+      alert(err.message || "שגיאה ביצירת קישור חדש");
     }
   };
 
@@ -255,90 +279,121 @@ export default function AdminPage() {
             {showInviteForm && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                 <div className="bg-white rounded-2xl w-full max-w-md p-6">
-                  <h3 className="text-xl font-bold mb-4">הזמנת בן משפחה</h3>
+                  {successLink ? (
+                    // Success state - show link
+                    <div className="text-center">
+                      <div className="text-5xl mb-4">🎉</div>
+                      <h3 className="text-xl font-bold mb-2">ההזמנה נוצרה!</h3>
+                      <p className="text-gray-600 mb-4">הקישור הועתק ללוח</p>
 
-                  <form onSubmit={handleCreateInvite} className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        שם מלא
-                      </label>
-                      <input
-                        type="text"
-                        value={inviteForm.name}
-                        onChange={(e) =>
-                          setInviteForm({ ...inviteForm, name: e.target.value })
-                        }
-                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="ישראל ישראלי"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        מספר טלפון
-                      </label>
-                      <input
-                        type="tel"
-                        value={inviteForm.phone}
-                        onChange={(e) =>
-                          setInviteForm({ ...inviteForm, phone: e.target.value })
-                        }
-                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-left"
-                        dir="ltr"
-                        placeholder="050-123-4567"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        קרבה
-                      </label>
-                      <select
-                        value={inviteForm.relationship}
-                        onChange={(e) =>
-                          setInviteForm({
-                            ...inviteForm,
-                            relationship: e.target.value as Relationship,
-                          })
-                        }
-                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      >
-                        {RELATIONSHIPS.map((rel) => (
-                          <option key={rel.value} value={rel.value}>
-                            {rel.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {error && (
-                      <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">
-                        {error}
+                      <div className="bg-gray-50 rounded-xl p-4 mb-4">
+                        <p className="text-sm text-gray-500 mb-2">קישור להזמנה:</p>
+                        <p className="text-sm font-mono break-all text-blue-600">{successLink}</p>
                       </div>
-                    )}
 
-                    <div className="flex gap-3 pt-2">
+                      <p className="text-sm text-gray-500 mb-4">
+                        שלח את הקישור למוזמן דרך וואטסאפ או SMS
+                      </p>
+
                       <button
-                        type="submit"
-                        disabled={isSubmitting}
-                        className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
-                      >
-                        {isSubmitting ? "שולח..." : "שלח הזמנה"}
-                      </button>
-                      <button
-                        type="button"
                         onClick={() => {
                           setShowInviteForm(false);
-                          setError(null);
+                          setSuccessLink(null);
                         }}
-                        className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors"
+                        className="w-full py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors"
                       >
-                        ביטול
+                        סגור
                       </button>
                     </div>
-                  </form>
+                  ) : (
+                    // Form state
+                    <>
+                      <h3 className="text-xl font-bold mb-4">הזמנת בן משפחה</h3>
+
+                      <form onSubmit={handleCreateInvite} className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            שם מלא
+                          </label>
+                          <input
+                            type="text"
+                            value={inviteForm.name}
+                            onChange={(e) =>
+                              setInviteForm({ ...inviteForm, name: e.target.value })
+                            }
+                            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="ישראל ישראלי"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            מספר טלפון
+                          </label>
+                          <input
+                            type="tel"
+                            value={inviteForm.phone}
+                            onChange={(e) =>
+                              setInviteForm({ ...inviteForm, phone: e.target.value })
+                            }
+                            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-left"
+                            dir="ltr"
+                            placeholder="050-123-4567"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            קרבה
+                          </label>
+                          <select
+                            value={inviteForm.relationship}
+                            onChange={(e) =>
+                              setInviteForm({
+                                ...inviteForm,
+                                relationship: e.target.value as Relationship,
+                              })
+                            }
+                            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          >
+                            {RELATIONSHIPS.map((rel) => (
+                              <option key={rel.value} value={rel.value}>
+                                {rel.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {error && (
+                          <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">
+                            {error}
+                          </div>
+                        )}
+
+                        <div className="flex gap-3 pt-2">
+                          <button
+                            type="submit"
+                            disabled={isSubmitting}
+                            className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
+                          >
+                            {isSubmitting ? "יוצר קישור..." : "צור קישור הזמנה"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowInviteForm(false);
+                              setError(null);
+                            }}
+                            className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors"
+                          >
+                            ביטול
+                          </button>
+                        </div>
+                      </form>
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -400,13 +455,21 @@ export default function AdminPage() {
                             : "ממתין"}
                         </span>
 
-                        {(invite.status === "failed" || invite.status === "pending") && (
-                          <button
-                            onClick={() => handleResendInvite(invite._id)}
-                            className="text-xs px-3 py-1 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
-                          >
-                            שלח שוב
-                          </button>
+                        {invite.status !== "accepted" && invite.inviteCode && (
+                          <>
+                            <button
+                              onClick={() => handleCopyInviteLink(invite.inviteCode!)}
+                              className="text-xs px-3 py-1 rounded-lg bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
+                            >
+                              העתק קישור
+                            </button>
+                            <button
+                              onClick={() => handleRegenerateInvite(invite._id)}
+                              className="text-xs px-3 py-1 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
+                            >
+                              קישור חדש
+                            </button>
+                          </>
                         )}
 
                         {invite.status !== "accepted" && (
