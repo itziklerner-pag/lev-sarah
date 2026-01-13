@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { ensureUser, getAuthUserId } from "./authHelpers";
 
 /**
@@ -61,6 +62,7 @@ export const bookSlot = mutation({
     }
 
     // 5. Create or update the slot
+    let slotId;
     if (existingSlot) {
       // Update existing unbooked slot
       await ctx.db.patch(existingSlot._id, {
@@ -68,10 +70,10 @@ export const bookSlot = mutation({
         bookedAt: Date.now(),
         notes: args.notes,
       });
-      return existingSlot._id;
+      slotId = existingSlot._id;
     } else {
       // Create new slot
-      return await ctx.db.insert("visitSlots", {
+      slotId = await ctx.db.insert("visitSlots", {
         date: args.date,
         slot: args.slot,
         hebrewDate: args.hebrewDate,
@@ -82,6 +84,39 @@ export const bookSlot = mutation({
         isHoliday: false,
       });
     }
+
+    // 6. Queue booking confirmation notification (immediate)
+    await ctx.runMutation(internal.notifications.queueBookingConfirmation, {
+      profileId: profile._id,
+      slotId,
+    });
+
+    // 7. Queue reminder notification (24h before visit)
+    // Calculate reminder time based on slot time
+    const slotStartHours = {
+      morning: 7,
+      afternoon: 12,
+      evening: 16,
+    };
+    const visitDateTime = new Date(args.date + "T00:00:00");
+    visitDateTime.setHours(slotStartHours[args.slot]);
+    const reminderTime = visitDateTime.getTime() - 24 * 60 * 60 * 1000; // 24h before
+
+    // Only schedule reminder if visit is more than 24h away
+    if (reminderTime > Date.now()) {
+      await ctx.runMutation(internal.notifications.queueReminder, {
+        profileId: profile._id,
+        slotId,
+        scheduledFor: reminderTime,
+      });
+    }
+
+    // 8. Update lastVisit on profile
+    await ctx.db.patch(profile._id, {
+      lastVisit: Date.now(),
+    });
+
+    return slotId;
   },
 });
 
@@ -117,7 +152,7 @@ export const cancelSlot = mutation({
     }
 
     // 4. Verify ownership (only booker or coordinator can cancel)
-    if (slot.bookedBy !== profile._id && !profile.isCoordinator) {
+    if (slot.bookedBy !== profile._id && !profile.isAdmin) {
       throw new Error("Unauthorized: Can only cancel your own bookings");
     }
 

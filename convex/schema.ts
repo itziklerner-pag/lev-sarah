@@ -12,19 +12,54 @@ export default defineSchema({
     name: v.string(), // Display name
     hebrewName: v.optional(v.string()),
     phone: v.string(),
-    role: v.union(
-      v.literal("sibling"),
-      v.literal("spouse"),
-      v.literal("grandchild"),
-      v.literal("coordinator")
+    relationship: v.union(
+      v.literal("בן"),
+      v.literal("בת"),
+      v.literal("נכד"),
+      v.literal("נכדה"),
+      v.literal("נינה"),
+      v.literal("קרוב"),
+      v.literal("קרובה")
     ),
-    isCoordinator: v.boolean(),
+    isAdmin: v.boolean(),
+    profileImage: v.optional(v.id("_storage")), // Profile picture for Abba's display
     avatarGradient: v.optional(v.string()),
     lastVisit: v.optional(v.number()),
+    profileCompleted: v.optional(v.boolean()), // Has user uploaded their picture
   })
     .index("by_userId", ["userId"])
     .index("by_phone", ["phone"])
-    .index("by_role", ["role"]),
+    .index("by_relationship", ["relationship"])
+    .index("by_admin", ["isAdmin"]),
+
+  // Invites for new family members
+  invites: defineTable({
+    phone: v.string(),
+    name: v.string(),
+    relationship: v.union(
+      v.literal("בן"),
+      v.literal("בת"),
+      v.literal("נכד"),
+      v.literal("נכדה"),
+      v.literal("נינה"),
+      v.literal("קרוב"),
+      v.literal("קרובה")
+    ),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("sent"),
+      v.literal("accepted"),
+      v.literal("failed")
+    ),
+    invitedBy: v.optional(v.id("familyProfiles")),
+    invitedAt: v.number(),
+    acceptedAt: v.optional(v.number()),
+    twilioMessageId: v.optional(v.string()),
+    error: v.optional(v.string()),
+    isAdminInvite: v.optional(v.boolean()), // If true, user becomes admin on accept
+  })
+    .index("by_phone", ["phone"])
+    .index("by_status", ["status"]),
 
   // Visit slots
   visitSlots: defineTable({
@@ -65,7 +100,8 @@ export default defineSchema({
       v.literal("reminder"),
       v.literal("confirmation"),
       v.literal("gap_alert"),
-      v.literal("nudge")
+      v.literal("nudge"),
+      v.literal("invite")
     ),
     status: v.union(
       v.literal("pending"),
@@ -73,8 +109,13 @@ export default defineSchema({
       v.literal("failed")
     ),
     scheduledFor: v.number(),
+    sentAt: v.optional(v.number()),
     twilioMessageId: v.optional(v.string()),
+    visitSlotId: v.optional(v.id("visitSlots")),
+    message: v.optional(v.string()),
+    error: v.optional(v.string()),
   })
     .index("by_status", ["status"])
-    .index("by_user", ["userId"]),
+    .index("by_user", ["userId"])
+    .index("by_scheduled", ["scheduledFor"]),
 });

@@ -3,49 +3,6 @@ import { mutation, query } from "./_generated/server";
 import { ensureUser, getAuthUserId } from "./authHelpers";
 
 /**
- * Create or update a family profile for the authenticated user
- */
-export const createProfile = mutation({
-  args: {
-    name: v.string(),
-    hebrewName: v.optional(v.string()),
-    phone: v.string(),
-    role: v.union(
-      v.literal("sibling"),
-      v.literal("spouse"),
-      v.literal("grandchild"),
-      v.literal("coordinator")
-    ),
-    isCoordinator: v.boolean(),
-    avatarGradient: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const userId = await ensureUser(ctx);
-    if (!userId) {
-      throw new Error("Unauthorized: Must be logged in to create profile");
-    }
-
-    // Check if profile already exists for this user
-    const existing = await ctx.db
-      .query("familyProfiles")
-      .withIndex("by_userId", (q) => q.eq("userId", userId))
-      .unique();
-
-    if (existing) {
-      // Update existing profile
-      await ctx.db.patch(existing._id, args);
-      return existing._id;
-    }
-
-    // Create new profile
-    return await ctx.db.insert("familyProfiles", {
-      userId,
-      ...args,
-    });
-  },
-});
-
-/**
  * Get the current user's family profile
  */
 export const getMyProfile = query({
@@ -56,20 +13,230 @@ export const getMyProfile = query({
       return null;
     }
 
-    return await ctx.db
+    const profile = await ctx.db
       .query("familyProfiles")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
       .unique();
+
+    if (!profile) {
+      return null;
+    }
+
+    // Get profile image URL if exists
+    let imageUrl = null;
+    if (profile.profileImage) {
+      imageUrl = await ctx.storage.getUrl(profile.profileImage);
+    }
+
+    return {
+      ...profile,
+      imageUrl,
+    };
   },
 });
 
 /**
- * Get all family member profiles
+ * Check if there's a pending invite for the authenticated user's phone
+ */
+export const checkInvite = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return null;
+    }
+
+    // Get phone from identity (format: phone:+972...)
+    const subject = identity.subject;
+    if (!subject?.startsWith("phone:")) {
+      return null;
+    }
+
+    const phone = subject.replace("phone:", "");
+
+    // Find invite by phone
+    const invite = await ctx.db
+      .query("invites")
+      .withIndex("by_phone", (q) => q.eq("phone", phone))
+      .first();
+
+    return invite;
+  },
+});
+
+/**
+ * Accept invite and create profile (called on first login)
+ */
+export const acceptInvite = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await ensureUser(ctx);
+    if (!userId) {
+      throw new Error("Unauthorized: Must be logged in");
+    }
+
+    // Get phone from identity
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("No identity found");
+    }
+
+    const subject = identity.subject;
+    if (!subject?.startsWith("phone:")) {
+      throw new Error("Invalid identity format");
+    }
+
+    const phone = subject.replace("phone:", "");
+
+    // Find invite
+    const invite = await ctx.db
+      .query("invites")
+      .withIndex("by_phone", (q) => q.eq("phone", phone))
+      .first();
+
+    if (!invite) {
+      throw new Error("לא נמצאה הזמנה עבור מספר זה");
+    }
+
+    // Check if profile already exists
+    const existingProfile = await ctx.db
+      .query("familyProfiles")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .unique();
+
+    if (existingProfile) {
+      return existingProfile._id;
+    }
+
+    // Create profile from invite
+    const profileId = await ctx.db.insert("familyProfiles", {
+      userId,
+      name: invite.name,
+      phone: invite.phone,
+      relationship: invite.relationship,
+      isAdmin: invite.isAdminInvite ?? false, // Seed admin gets admin rights
+      profileCompleted: false,
+    });
+
+    // Mark invite as accepted
+    await ctx.db.patch(invite._id, {
+      status: "accepted",
+      acceptedAt: Date.now(),
+    });
+
+    return profileId;
+  },
+});
+
+/**
+ * Generate upload URL for profile image
+ */
+export const generateUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Unauthorized");
+    }
+
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+/**
+ * Complete profile with uploaded image
+ */
+export const completeProfile = mutation({
+  args: {
+    storageId: v.id("_storage"),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Unauthorized");
+    }
+
+    const profile = await ctx.db
+      .query("familyProfiles")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .unique();
+
+    if (!profile) {
+      throw new Error("Profile not found");
+    }
+
+    // Delete old image if exists
+    if (profile.profileImage) {
+      await ctx.storage.delete(profile.profileImage);
+    }
+
+    // Update profile with new image
+    await ctx.db.patch(profile._id, {
+      profileImage: args.storageId,
+      profileCompleted: true,
+    });
+
+    return { success: true };
+  },
+});
+
+/**
+ * Update profile name/hebrewName
+ */
+export const updateProfile = mutation({
+  args: {
+    name: v.optional(v.string()),
+    hebrewName: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Unauthorized");
+    }
+
+    const profile = await ctx.db
+      .query("familyProfiles")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .unique();
+
+    if (!profile) {
+      throw new Error("Profile not found");
+    }
+
+    const updates: Record<string, string> = {};
+    if (args.name) updates.name = args.name;
+    if (args.hebrewName) updates.hebrewName = args.hebrewName;
+
+    if (Object.keys(updates).length > 0) {
+      await ctx.db.patch(profile._id, updates);
+    }
+
+    return { success: true };
+  },
+});
+
+/**
+ * Get all family member profiles (with images)
  */
 export const getAllProfiles = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("familyProfiles").collect();
+    const profiles = await ctx.db.query("familyProfiles").collect();
+
+    const profilesWithImages = await Promise.all(
+      profiles.map(async (profile) => {
+        let imageUrl = null;
+        if (profile.profileImage) {
+          imageUrl = await ctx.storage.getUrl(profile.profileImage);
+        }
+        return {
+          ...profile,
+          imageUrl,
+        };
+      })
+    );
+
+    return profilesWithImages;
   },
 });
 
@@ -79,6 +246,17 @@ export const getAllProfiles = query({
 export const getProfile = query({
   args: { profileId: v.id("familyProfiles") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.profileId);
+    const profile = await ctx.db.get(args.profileId);
+    if (!profile) return null;
+
+    let imageUrl = null;
+    if (profile.profileImage) {
+      imageUrl = await ctx.storage.getUrl(profile.profileImage);
+    }
+
+    return {
+      ...profile,
+      imageUrl,
+    };
   },
 });

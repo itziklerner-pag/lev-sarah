@@ -10,6 +10,9 @@ export type { Id, Doc };
 // Slot types
 export type SlotType = "morning" | "afternoon" | "evening";
 
+// Relationship types
+export type Relationship = "בן" | "בת" | "נכד" | "נכדה" | "נינה" | "קרוב" | "קרובה";
+
 // Family member profile
 export interface FamilyProfile {
   _id: Id<"familyProfiles">;
@@ -18,10 +21,13 @@ export interface FamilyProfile {
   name: string;
   hebrewName?: string;
   phone: string;
-  role: "sibling" | "spouse" | "grandchild" | "coordinator";
-  isCoordinator: boolean;
+  relationship: Relationship;
+  isAdmin: boolean;
+  profileImage?: Id<"_storage">;
+  profileCompleted?: boolean;
   avatarGradient?: string;
   lastVisit?: number;
+  imageUrl?: string | null;
 }
 
 // Visit slot
@@ -64,4 +70,66 @@ export interface BookingAction {
   date: string;
   slot: SlotType;
   hebrewDate: string;
+}
+
+// Notification types
+export type NotificationType = "reminder" | "confirmation" | "gap_alert" | "nudge" | "invite";
+export type NotificationStatus = "pending" | "sent" | "failed";
+
+export interface Notification {
+  _id: Id<"notifications">;
+  _creationTime: number;
+  userId: Id<"familyProfiles">;
+  type: NotificationType;
+  status: NotificationStatus;
+  scheduledFor: number;
+  sentAt?: number;
+  twilioMessageId?: string;
+  visitSlotId?: Id<"visitSlots">;
+  message?: string;
+  error?: string;
+}
+
+// Enriched notification with profile data
+export interface EnrichedNotification extends Notification {
+  userProfile: FamilyProfile | null;
+}
+
+// Gap analysis day
+export interface GapAnalysisDay {
+  date: string;
+  displayDate: string;
+  isShabbat: boolean;
+  isGap: boolean;
+  coverage: number | null;
+  slots: {
+    morning: EnrichedVisitSlot | null;
+    afternoon: EnrichedVisitSlot | null;
+    evening: EnrichedVisitSlot | null;
+  };
+}
+
+// Coordinator stats
+export interface CoordinatorStats {
+  upcomingWeek: {
+    totalSlots: number;
+    booked: number;
+    coverage: number;
+  };
+  familyActivity: {
+    totalMembers: number;
+    activeMembers: number;
+    inactiveMembers: number;
+  };
+  notifications: {
+    pending: number;
+    failed: number;
+  };
+}
+
+// Family member with activity stats
+export interface FamilyMemberWithStats extends FamilyProfile {
+  totalBookings: number;
+  daysSinceLastVisit: number | null;
+  isActive: boolean;
 }
