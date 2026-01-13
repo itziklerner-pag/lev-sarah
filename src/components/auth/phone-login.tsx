@@ -13,26 +13,34 @@ export function PhoneLogin() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Format phone for display (Israeli format)
+  // Format phone for display
   const formatPhoneDisplay = (value: string) => {
     const digits = value.replace(/\D/g, "");
     if (digits.length <= 3) return digits;
     if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
-    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
+    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 14)}`;
   };
 
   // Convert to international format
   const toInternational = (phoneNumber: string) => {
     const digits = phoneNumber.replace(/\D/g, "");
-    // If starts with 0, replace with +972
+    // If starts with 0, assume Israeli and replace with +972
     if (digits.startsWith("0")) {
       return `+972${digits.slice(1)}`;
     }
-    // If already has country code
-    if (digits.startsWith("972")) {
+    // If starts with 1 and is 10-11 digits, assume US
+    if (digits.startsWith("1") && digits.length >= 10 && digits.length <= 11) {
       return `+${digits}`;
     }
-    // Assume Israeli number
+    // If 10 digits without country code, assume US
+    if (digits.length === 10) {
+      return `+1${digits}`;
+    }
+    // If already has country code (starts with country code)
+    if (digits.length > 10) {
+      return `+${digits}`;
+    }
+    // Default: assume Israeli number
     return `+972${digits}`;
   };
 
@@ -81,7 +89,7 @@ export function PhoneLogin() {
             type="tel"
             value={formatPhoneDisplay(phone)}
             onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
-            placeholder="050-123-4567"
+            placeholder="050-123-4567 / 555-123-4567"
             className="w-full px-4 py-3 text-lg border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center"
             dir="ltr"
             autoComplete="tel"
