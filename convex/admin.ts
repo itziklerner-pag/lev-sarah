@@ -1,6 +1,6 @@
 import { v } from "convex/values";
-import { mutation, query, action, internalMutation, internalQuery, internalAction } from "./_generated/server";
-import { internal, api } from "./_generated/api";
+import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { getAuthUserId } from "./authHelpers";
 import { Id } from "./_generated/dataModel";
 
@@ -15,6 +15,18 @@ const RELATIONSHIP_VALUES = [
 ] as const;
 
 type Relationship = (typeof RELATIONSHIP_VALUES)[number];
+
+/**
+ * Generate a unique invite code (8 characters, alphanumeric)
+ */
+function generateInviteCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  let code = "";
+  for (let i = 0; i < 8; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
 
 /**
  * Check if current user is an admin
@@ -113,6 +125,7 @@ export const getInvites = query({
 
 /**
  * Create an invite for a new family member
+ * Returns the invite link to be copied to clipboard
  */
 export const createInvite = mutation({
   args: {
@@ -146,7 +159,12 @@ export const createInvite = mutation({
       .first();
 
     if (existingInvite && existingInvite.status !== "failed") {
-      throw new Error("הזמנה כבר נשלחה למספר זה");
+      // Return existing invite code
+      return {
+        inviteId: existingInvite._id,
+        inviteCode: existingInvite.inviteCode,
+        isExisting: true,
+      };
     }
 
     // Check if user already exists
@@ -159,6 +177,23 @@ export const createInvite = mutation({
       throw new Error("משתמש עם מספר זה כבר קיים במערכת");
     }
 
+    // Generate unique invite code
+    let inviteCode = generateInviteCode();
+
+    // Ensure code is unique
+    let existingCode = await ctx.db
+      .query("invites")
+      .withIndex("by_inviteCode", (q) => q.eq("inviteCode", inviteCode))
+      .first();
+
+    while (existingCode) {
+      inviteCode = generateInviteCode();
+      existingCode = await ctx.db
+        .query("invites")
+        .withIndex("by_inviteCode", (q) => q.eq("inviteCode", inviteCode))
+        .first();
+    }
+
     // Create invite record
     const inviteId = await ctx.db.insert("invites", {
       phone,
@@ -167,138 +202,60 @@ export const createInvite = mutation({
       status: "pending",
       invitedBy: adminProfileId,
       invitedAt: Date.now(),
+      inviteCode,
     });
 
-    return inviteId;
+    return {
+      inviteId,
+      inviteCode,
+      isExisting: false,
+    };
   },
 });
 
 /**
- * Send invite via WhatsApp (internal mutation called after invite created)
+ * Get invite by code (for invite acceptance page)
  */
-export const sendInviteWhatsApp = internalMutation({
-  args: {
-    inviteId: v.id("invites"),
-  },
+export const getInviteByCode = query({
+  args: { code: v.string() },
   handler: async (ctx, args) => {
-    const invite = await ctx.db.get(args.inviteId);
-    if (!invite) {
-      throw new Error("Invite not found");
-    }
-
-    // Mark as sent (actual sending happens in action)
-    await ctx.db.patch(args.inviteId, {
-      status: "sent",
-    });
-  },
-});
-
-/**
- * Mark invite as failed
- */
-export const markInviteFailed = internalMutation({
-  args: {
-    inviteId: v.id("invites"),
-    error: v.string(),
-  },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args.inviteId, {
-      status: "failed",
-      error: args.error,
-    });
-  },
-});
-
-/**
- * Internal action to send invite via WhatsApp (called by public action and seed)
- */
-export const sendInviteInternal = internalAction({
-  args: {
-    inviteId: v.id("invites"),
-  },
-  handler: async (ctx, args): Promise<{ success: boolean; dev?: boolean; messageId?: string }> => {
-    // Get invite details
-    const invite = await ctx.runQuery(internal.admin.getInviteByIdInternal, {
-      inviteId: args.inviteId,
-    });
+    const invite = await ctx.db
+      .query("invites")
+      .withIndex("by_inviteCode", (q) => q.eq("inviteCode", args.code))
+      .first();
 
     if (!invite) {
-      throw new Error("Invite not found");
+      return null;
     }
 
-    const twilioSid = process.env.TWILIO_SID;
-    const twilioToken = process.env.TWILIO_TOKEN;
-    const whatsappSender = process.env.WHATSAPP_SENDER || "+16506102211";
-
-    if (!twilioSid || !twilioToken) {
-      // Mark as sent for dev mode without Twilio
-      await ctx.runMutation(internal.admin.sendInviteWhatsApp, {
-        inviteId: args.inviteId,
-      });
-      console.log(`[DEV] Would send invite to ${invite.phone}: שלום ${invite.name}!`);
-      return { success: true, dev: true };
-    }
-
-    try {
-      // Send via Twilio WhatsApp
-      const message = `שלום ${invite.name}! הוזמנת להצטרף למערכת הביקורים המשפחתית אצל אבא. לחץ כאן להצטרפות: ${process.env.NEXT_PUBLIC_APP_URL || "https://levsarah.vercel.app"}`;
-
-      const response = await fetch(
-        `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-            Authorization: `Basic ${btoa(`${twilioSid}:${twilioToken}`)}`,
-          },
-          body: new URLSearchParams({
-            From: `whatsapp:${whatsappSender}`,
-            To: `whatsapp:${invite.phone}`,
-            Body: message,
-          }),
-        }
-      );
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.message || "Failed to send WhatsApp message");
-      }
-
-      await ctx.runMutation(internal.admin.sendInviteWhatsApp, {
-        inviteId: args.inviteId,
-      });
-
-      return { success: true, messageId: result.sid };
-    } catch (error: any) {
-      await ctx.runMutation(internal.admin.markInviteFailed, {
-        inviteId: args.inviteId,
-        error: error.message || "Unknown error",
-      });
-      throw error;
-    }
+    // Don't expose sensitive fields
+    return {
+      _id: invite._id,
+      name: invite.name,
+      relationship: invite.relationship,
+      status: invite.status,
+      isAdminInvite: invite.isAdminInvite,
+    };
   },
 });
 
 /**
- * Public action to send invite (wraps internal action)
- */
-export const sendInvite = action({
-  args: {
-    inviteId: v.id("invites"),
-  },
-  handler: async (ctx, args): Promise<{ success: boolean; dev?: boolean; messageId?: string }> => {
-    return await ctx.runAction(internal.admin.sendInviteInternal, args);
-  },
-});
-
-/**
- * Get invite by ID (internal - for action to use)
+ * Get invite by ID (internal - for mutations)
  */
 export const getInviteByIdInternal = internalQuery({
   args: { inviteId: v.id("invites") },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.inviteId);
+  },
+});
+
+/**
+ * Get profile by ID (internal)
+ */
+export const getProfileByIdInternal = internalQuery({
+  args: { profileId: v.id("familyProfiles") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.profileId);
   },
 });
 
@@ -363,27 +320,55 @@ export const deleteInvite = mutation({
 });
 
 /**
- * Resend an invite
+ * Regenerate invite code (for resending)
  */
-export const resendInvite = mutation({
+export const regenerateInviteCode = mutation({
   args: {
     inviteId: v.id("invites"),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
 
+    // Generate new unique code
+    let inviteCode = generateInviteCode();
+    let existingCode = await ctx.db
+      .query("invites")
+      .withIndex("by_inviteCode", (q) => q.eq("inviteCode", inviteCode))
+      .first();
+
+    while (existingCode) {
+      inviteCode = generateInviteCode();
+      existingCode = await ctx.db
+        .query("invites")
+        .withIndex("by_inviteCode", (q) => q.eq("inviteCode", inviteCode))
+        .first();
+    }
+
     await ctx.db.patch(args.inviteId, {
+      inviteCode,
       status: "pending",
       error: undefined,
       invitedAt: Date.now(),
     });
 
-    return args.inviteId;
+    return { inviteCode };
+  },
+});
+
+/**
+ * Delete invite by ID (internal - for debugging/seeding)
+ */
+export const deleteInviteInternal = internalMutation({
+  args: { inviteId: v.id("invites") },
+  handler: async (ctx, args) => {
+    await ctx.db.delete(args.inviteId);
+    return { deleted: true };
   },
 });
 
 /**
  * Seed the initial admin (used by seed script)
+ * Returns the invite code for generating the link
  */
 export const seedAdmin = internalMutation({
   args: {
@@ -414,7 +399,22 @@ export const seedAdmin = internalMutation({
 
     if (existing) {
       console.log("Seed admin invite already exists");
-      return existing._id;
+      return { inviteId: existing._id, inviteCode: existing.inviteCode, isExisting: true };
+    }
+
+    // Generate unique invite code
+    let inviteCode = generateInviteCode();
+    let existingCode = await ctx.db
+      .query("invites")
+      .withIndex("by_inviteCode", (q) => q.eq("inviteCode", inviteCode))
+      .first();
+
+    while (existingCode) {
+      inviteCode = generateInviteCode();
+      existingCode = await ctx.db
+        .query("invites")
+        .withIndex("by_inviteCode", (q) => q.eq("inviteCode", inviteCode))
+        .first();
     }
 
     // Create invite for seed admin (with admin flag)
@@ -425,36 +425,22 @@ export const seedAdmin = internalMutation({
       status: "pending",
       invitedAt: Date.now(),
       isAdminInvite: true, // Seed admin becomes admin on accept
+      inviteCode,
     });
 
-    return inviteId;
+    return { inviteId, inviteCode, isExisting: false };
   },
 });
 
 /**
- * Action to seed admin and send invite
+ * Mark invite as accepted (called after successful registration)
  */
-export const seedAndInviteAdmin = action({
-  args: {
-    phone: v.string(),
-    name: v.string(),
-    relationship: v.union(
-      v.literal("בן"),
-      v.literal("בת"),
-      v.literal("נכד"),
-      v.literal("נכדה"),
-      v.literal("נינה"),
-      v.literal("קרוב"),
-      v.literal("קרובה")
-    ),
-  },
-  handler: async (ctx, args): Promise<{ success: boolean; inviteId: Id<"invites"> }> => {
-    // Create invite
-    const inviteId: Id<"invites"> = await ctx.runMutation(internal.admin.seedAdmin, args);
-
-    // Send WhatsApp invite using internal action
-    await ctx.runAction(internal.admin.sendInviteInternal, { inviteId });
-
-    return { success: true, inviteId };
+export const markInviteAccepted = internalMutation({
+  args: { inviteId: v.id("invites") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.inviteId, {
+      status: "accepted",
+      acceptedAt: Date.now(),
+    });
   },
 });

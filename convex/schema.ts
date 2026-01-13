@@ -54,12 +54,17 @@ export default defineSchema({
     invitedBy: v.optional(v.id("familyProfiles")),
     invitedAt: v.number(),
     acceptedAt: v.optional(v.number()),
-    twilioMessageId: v.optional(v.string()),
     error: v.optional(v.string()),
     isAdminInvite: v.optional(v.boolean()), // If true, user becomes admin on accept
+    inviteCode: v.optional(v.string()), // Unique code for invite link
+    // Legacy fields (to be removed after migration)
+    otpCode: v.optional(v.string()),
+    otpExpiresAt: v.optional(v.number()),
+    twilioMessageId: v.optional(v.string()),
   })
     .index("by_phone", ["phone"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_inviteCode", ["inviteCode"]),
 
   // Visit slots
   visitSlots: defineTable({
