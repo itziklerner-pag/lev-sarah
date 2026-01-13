@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { useConvexAuth } from "convex/react";
 import { useParams, useRouter } from "next/navigation";
@@ -14,6 +14,7 @@ export default function InvitePage() {
 
   const { isAuthenticated, isLoading: authLoading } = useConvexAuth();
   const invite = useQuery(api.admin.getInviteByCode, { code });
+  const acceptInvite = useMutation(api.users.acceptInvite);
   const [accepting, setAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -133,7 +134,17 @@ export default function InvitePage() {
               אתה מחובר! לחץ להשלמת ההרשמה
             </p>
             <button
-              onClick={() => router.push("/schedule")}
+              onClick={async () => {
+                setAccepting(true);
+                setError(null);
+                try {
+                  await acceptInvite();
+                  router.push("/schedule");
+                } catch (err: any) {
+                  setError(err.message || "שגיאה בהרשמה");
+                  setAccepting(false);
+                }
+              }}
               disabled={accepting}
               className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-gray-300 text-white font-medium py-4 px-6 rounded-xl transition-colors text-lg"
             >
