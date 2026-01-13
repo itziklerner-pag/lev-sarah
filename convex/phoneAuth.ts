@@ -26,7 +26,8 @@ export const WhatsAppPhone = Phone({
 
     // Use Twilio REST API directly
     const url = `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`;
-    const auth = Buffer.from(`${twilioSid}:${twilioToken}`).toString("base64");
+    // Use btoa for base64 encoding (works in Convex runtime)
+    const auth = btoa(`${twilioSid}:${twilioToken}`);
 
     const body = new URLSearchParams({
       From: `whatsapp:${whatsappSender}`,
