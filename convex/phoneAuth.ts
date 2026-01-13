@@ -24,15 +24,19 @@ export const WhatsAppPhone = Phone({
     // Format phone number for WhatsApp
     const formattedPhone = phone.startsWith("+") ? phone : `+${phone}`;
 
-    // Use Twilio REST API directly
+    // Use Twilio REST API with Content Template (UTILITY category)
     const url = `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`;
     // Use btoa for base64 encoding (works in Convex runtime)
     const auth = btoa(`${twilioSid}:${twilioToken}`);
 
+    // Use Content Template for AUTHENTICATION messages (bypasses 24-hour window)
+    const OTP_TEMPLATE_SID = "HX886b0dc8fe837f1b0d514362eb995a3e";
+
     const body = new URLSearchParams({
       From: `whatsapp:${whatsappSender}`,
       To: `whatsapp:${formattedPhone}`,
-      Body: `קוד הכניסה שלך ללב שרה: ${token}\n\nתוקף הקוד: 10 דקות`,
+      ContentSid: OTP_TEMPLATE_SID,
+      ContentVariables: JSON.stringify({ "1": token }),
     });
 
     try {
@@ -45,9 +49,12 @@ export const WhatsAppPhone = Phone({
         body: body.toString(),
       });
 
+      const responseText = await response.text();
+      console.log(`Twilio response status: ${response.status}`);
+      console.log(`Twilio response: ${responseText}`);
+
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Twilio API error:", errorText);
+        console.error("Twilio API error:", responseText);
         throw new Error("Failed to send verification code");
       }
 
