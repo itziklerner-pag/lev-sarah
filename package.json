@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "npx convex deploy --cmd 'next build' --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL",
+    "build": "convex deploy --yes --cmd 'next build' --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest",
