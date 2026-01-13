@@ -131,6 +131,7 @@ export function PhoneLogin() {
           className="w-full px-4 py-3 text-2xl tracking-[0.5em] border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center font-mono"
           dir="ltr"
           autoComplete="one-time-code"
+          autoFocus
           required
         />
       </div>

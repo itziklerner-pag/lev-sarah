@@ -444,3 +444,35 @@ export const markInviteAccepted = internalMutation({
     });
   },
 });
+
+/**
+ * Clear all user data (for testing/resetting)
+ * This is an internal mutation for use by developers only
+ */
+export const clearAllData = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    // Delete all invites
+    const invites = await ctx.db.query("invites").collect();
+    for (const invite of invites) {
+      await ctx.db.delete(invite._id);
+    }
+
+    // Delete all family profiles and their images
+    const profiles = await ctx.db.query("familyProfiles").collect();
+    for (const profile of profiles) {
+      if (profile.profileImage) {
+        await ctx.storage.delete(profile.profileImage);
+      }
+      await ctx.db.delete(profile._id);
+    }
+
+    // Note: authAccounts and authSessions are managed by Convex Auth
+    // They should be cleared through the auth system or manually
+
+    return {
+      deletedInvites: invites.length,
+      deletedProfiles: profiles.length,
+    };
+  },
+});

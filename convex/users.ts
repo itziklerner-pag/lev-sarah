@@ -104,10 +104,31 @@ export const acceptInvite = mutation({
       throw new Error("No identity found");
     }
 
-    const phone = extractPhoneFromSubject(identity.subject);
+    // Get phone from authAccounts table
+    // The subject format is: "userId|sessionId"
+    const subjectParts = identity.subject.split("|");
+    const authUserId = subjectParts[0];
+
+    // Look up the auth account to get the phone number
+    const authAccount = await ctx.db
+      .query("authAccounts")
+      .filter((q) => q.eq(q.field("userId"), authUserId))
+      .first();
+
+    if (!authAccount) {
+      throw new Error("Auth account not found");
+    }
+
+    // Get phone from providerAccountId or phoneVerified
+    let phone = (authAccount as any).providerAccountId || (authAccount as any).phoneVerified;
+
     if (!phone) {
-      console.log("Identity subject:", identity.subject);
-      throw new Error("Invalid identity format - could not extract phone number");
+      throw new Error("Could not extract phone number from auth account");
+    }
+
+    // Normalize phone format
+    if (!phone.startsWith("+")) {
+      phone = "+" + phone;
     }
 
     // Find invite

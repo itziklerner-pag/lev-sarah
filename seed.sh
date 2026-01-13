@@ -28,7 +28,7 @@ if [ $? -eq 0 ]; then
 
   if [ -n "$INVITE_CODE" ]; then
     # Construct the invite URL
-    BASE_URL="${SITE_URL:-https://levsarah.vercel.app}"
+    BASE_URL="${SITE_URL:-https://levsarah.org}"
     INVITE_URL="${BASE_URL}/invite/${INVITE_CODE}"
 
     echo ""
