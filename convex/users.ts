@@ -36,6 +36,32 @@ export const getMyProfile = query({
 });
 
 /**
+ * Extract phone number from identity subject
+ * Handles formats like "phone:+1234567890" or "whatsapp-phone:+1234567890"
+ */
+function extractPhoneFromSubject(subject: string | undefined): string | null {
+  if (!subject) return null;
+
+  // Try different formats
+  if (subject.startsWith("phone:")) {
+    return subject.replace("phone:", "");
+  }
+  if (subject.startsWith("whatsapp-phone:")) {
+    return subject.replace("whatsapp-phone:", "");
+  }
+  // Generic format: providerId:identifier
+  if (subject.includes(":")) {
+    const parts = subject.split(":");
+    const identifier = parts.slice(1).join(":"); // Handle phone numbers with + sign
+    // Check if it looks like a phone number
+    if (identifier.startsWith("+") || /^\d+$/.test(identifier)) {
+      return identifier.startsWith("+") ? identifier : `+${identifier}`;
+    }
+  }
+  return null;
+}
+
+/**
  * Check if there's a pending invite for the authenticated user's phone
  */
 export const checkInvite = query({
@@ -46,13 +72,10 @@ export const checkInvite = query({
       return null;
     }
 
-    // Get phone from identity (format: phone:+972...)
-    const subject = identity.subject;
-    if (!subject?.startsWith("phone:")) {
+    const phone = extractPhoneFromSubject(identity.subject);
+    if (!phone) {
       return null;
     }
-
-    const phone = subject.replace("phone:", "");
 
     // Find invite by phone
     const invite = await ctx.db
@@ -81,12 +104,11 @@ export const acceptInvite = mutation({
       throw new Error("No identity found");
     }
 
-    const subject = identity.subject;
-    if (!subject?.startsWith("phone:")) {
-      throw new Error("Invalid identity format");
+    const phone = extractPhoneFromSubject(identity.subject);
+    if (!phone) {
+      console.log("Identity subject:", identity.subject);
+      throw new Error("Invalid identity format - could not extract phone number");
     }
-
-    const phone = subject.replace("phone:", "");
 
     // Find invite
     const invite = await ctx.db
