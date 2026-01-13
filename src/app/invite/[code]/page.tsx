@@ -1,11 +1,11 @@
 "use client";
 
-import { useQuery, useMutation } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { useConvexAuth } from "convex/react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { SignInButton } from "@clerk/nextjs";
+import { PhoneLogin } from "../../../components/auth/phone-login";
 
 export default function InvitePage() {
   const params = useParams();
@@ -125,11 +125,7 @@ export default function InvitePage() {
             <p className="text-gray-600 mb-4">
               להתחברות והצטרפות למערכת
             </p>
-            <SignInButton mode="modal">
-              <button className="w-full bg-amber-500 hover:bg-amber-600 text-white font-medium py-4 px-6 rounded-xl transition-colors text-lg">
-                התחבר עם הטלפון
-              </button>
-            </SignInButton>
+            <PhoneLogin />
           </div>
         ) : (
           <div className="text-center">
