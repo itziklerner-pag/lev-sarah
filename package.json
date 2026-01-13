@@ -13,14 +13,15 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "next": "^16.1.1",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "convex": "^1.17.4",
-    "@convex-dev/auth": "^0.0.80",
     "@auth/core": "0.37.0",
+    "@convex-dev/auth": "^0.0.80",
     "@hebcal/core": "^5.5.2",
-    "clsx": "^2.1.1"
+    "clsx": "^2.1.1",
+    "convex": "^1.17.4",
+    "next": "^16.1.1",
+    "oslo": "^1.2.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",

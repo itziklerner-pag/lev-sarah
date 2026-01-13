@@ -1,6 +1,7 @@
 "use client";
 
 import { useConvexAuth } from "convex/react";
+import { PhoneLogin } from "@/components/auth/phone-login";
 
 export default function SchedulePage() {
   const { isAuthenticated, isLoading } = useConvexAuth();
@@ -15,11 +16,12 @@ export default function SchedulePage() {
 
   if (!isAuthenticated) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-4">
-        <h1 className="text-3xl font-bold">לב שרה</h1>
-        <p className="text-gray-600">תורנות ביקורים אצל אבא</p>
-        <p className="text-sm text-gray-500">אנא התחבר כדי להמשיך</p>
-        {/* Auth component will be added in Phase 1 */}
+      <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-4">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold">לב שרה</h1>
+          <p className="text-gray-600 mt-2">תורנות ביקורים אצל אבא</p>
+        </div>
+        <PhoneLogin />
       </main>
     );
   }

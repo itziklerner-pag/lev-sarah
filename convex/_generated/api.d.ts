@@ -11,6 +11,7 @@
 import type * as auth from "../auth.js";
 import type * as authHelpers from "../authHelpers.js";
 import type * as http from "../http.js";
+import type * as phoneAuth from "../phoneAuth.js";
 import type * as users from "../users.js";
 import type * as visits from "../visits.js";
 
@@ -24,6 +25,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   authHelpers: typeof authHelpers;
   http: typeof http;
+  phoneAuth: typeof phoneAuth;
   users: typeof users;
   visits: typeof visits;
 }>;
