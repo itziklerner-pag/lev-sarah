@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import path from "path";
 
 export default defineConfig({
   test: {
@@ -8,7 +9,7 @@ export default defineConfig({
         inline: ["convex-test"],
       },
     },
-    include: ["convex/**/*.test.ts", "tests/**/*.test.ts"],
+    include: ["convex/**/*.test.ts", "tests/**/*.test.ts", "lib/**/*.test.ts"],
     testTimeout: 30000,
     // Suppress noisy stderr output from convex-test
     silent: false,
@@ -19,6 +20,11 @@ export default defineConfig({
         return false;
       }
       return true;
+    },
+  },
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
     },
   },
 });
