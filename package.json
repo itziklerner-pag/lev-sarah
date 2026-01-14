@@ -12,7 +12,9 @@
     "lint": "next lint",
     "test": "vitest",
     "test:once": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@auth/core": "0.37.0",
@@ -26,17 +28,18 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@edge-runtime/vm": "^5.0.0",
+    "@playwright/test": "^1.57.0",
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.4",
     "@types/react-dom": "^19.0.2",
-    "typescript": "^5.7.2",
-    "tailwindcss": "^3.4.17",
-    "postcss": "^8.4.49",
     "autoprefixer": "^10.4.20",
+    "convex-test": "^0.0.34",
     "eslint": "^9.17.0",
     "eslint-config-next": "^16.1.1",
-    "vitest": "^2.1.8",
-    "@edge-runtime/vm": "^5.0.0",
-    "convex-test": "^0.0.34"
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
   }
 }

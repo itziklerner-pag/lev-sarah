@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { DayCard } from "./day-card";
@@ -11,6 +11,8 @@ import {
   isShabbatSlot,
   getHolidayInfo,
 } from "../../../lib/hebrew-calendar";
+import { cacheScheduleData, getCachedScheduleData } from "../../../lib/offline-cache";
+import { useOnlineStatus } from "@/app/providers";
 import type { SlotType, EnrichedVisitSlot, FamilyProfile } from "../../../lib/types";
 import clsx from "clsx";
 
@@ -25,6 +27,8 @@ interface WeekViewProps {
  */
 export function WeekView({ onSlotSelect, currentUserProfile }: WeekViewProps) {
   const [weekOffset, setWeekOffset] = useState(0);
+  const [cachedData, setCachedData] = useState<unknown>(null);
+  const isOnline = useOnlineStatus();
 
   // Calculate week start date
   const weekStart = useMemo(() => {
@@ -46,6 +50,25 @@ export function WeekView({ onSlotSelect, currentUserProfile }: WeekViewProps) {
     endDate,
   });
 
+  // Cache schedule data when loaded
+  useEffect(() => {
+    if (scheduleData) {
+      cacheScheduleData(startDate, scheduleData);
+    }
+  }, [scheduleData, startDate]);
+
+  // Load cached data when offline
+  useEffect(() => {
+    if (!isOnline && scheduleData === undefined) {
+      getCachedScheduleData(startDate).then((data) => {
+        if (data) setCachedData(data);
+      });
+    }
+  }, [isOnline, startDate, scheduleData]);
+
+  // Use cached data as fallback when offline
+  const effectiveScheduleData = scheduleData ?? (cachedData as typeof scheduleData);
+
   // Process schedule into day-by-day structure
   const daysWithSlots = useMemo(() => {
     return weekDays.map((date) => {
@@ -60,7 +83,7 @@ export function WeekView({ onSlotSelect, currentUserProfile }: WeekViewProps) {
       const holiday = getHolidayInfo(date);
 
       // Find slots for this day
-      const daySlots = (scheduleData ?? []).filter((s) => s.date === isoDate);
+      const daySlots = (effectiveScheduleData ?? []).filter((s) => s.date === isoDate);
 
       const slots = {
         morning: daySlots.find((s) => s.slot === "morning") as EnrichedVisitSlot | null ?? null,
@@ -78,7 +101,7 @@ export function WeekView({ onSlotSelect, currentUserProfile }: WeekViewProps) {
         slots,
       };
     });
-  }, [weekDays, scheduleData]);
+  }, [weekDays, effectiveScheduleData]);
 
   // Navigation handlers
   const goToPreviousWeek = () => setWeekOffset((w) => w - 1);
@@ -99,7 +122,7 @@ export function WeekView({ onSlotSelect, currentUserProfile }: WeekViewProps) {
     return `${startMonth} - ${endMonth} ${year}`;
   }, [weekDays]);
 
-  const isLoading = scheduleData === undefined;
+  const isLoading = scheduleData === undefined && !cachedData;
 
   return (
     <div className="flex flex-col gap-4">

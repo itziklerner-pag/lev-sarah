@@ -1,4 +1,4 @@
-# Lerner Family Visit Scheduler
+# Lerner Family Visit Scheduler (Lev Sarah)
 
 ## Project Overview
 
@@ -6,18 +6,22 @@ A mobile-first PWA for coordinating family visits with an elderly father ("Abba"
 
 **Core Principle**: "If it's harder than WhatsApp, people won't use it."
 
+**Domain**: levsarah.org
+
 ## Technology Stack (LOCKED - Do Not Change)
 
-| Layer | Technology |
-|-------|------------|
-| Runtime | Bun (package manager + runtime) |
-| Frontend | Next.js 16+ with App Router, Turbopack |
-| Styling | Tailwind CSS |
-| Backend | Convex (database, auth, realtime, scheduled functions) |
-| Deployment | Vercel |
-| Notifications | Twilio WhatsApp API |
-| Hebrew Calendar | @hebcal/core v6+ (ES modules, client-side) |
-| Testing | Vitest (unit/component) + Playwright (E2E) + convex-test |
+| Layer | Technology | Version |
+|-------|------------|---------|
+| Runtime | Bun (package manager + runtime) | Latest |
+| Frontend | Next.js with App Router, Turbopack | 16.1.1 |
+| React | React 19 | 19.0.0 |
+| Styling | Tailwind CSS | 3.4.17 |
+| Backend | Convex (database, auth, realtime, scheduled functions) | 1.17.4 |
+| Auth | @convex-dev/auth + @auth/core | 0.0.80 / 0.37.0 |
+| Deployment | Vercel | - |
+| Notifications | Twilio WhatsApp API (Content Templates) | - |
+| Hebrew Calendar | @hebcal/core (ES modules, client-side) | 5.5.2 |
+| Testing | Vitest (unit) + convex-test | 2.1.8 / 0.0.34 |
 
 ### Why Bun?
 - **Fast installs**: 10-100x faster than npm
@@ -27,40 +31,96 @@ A mobile-first PWA for coordinating family visits with an elderly father ("Abba"
 
 ### Commands
 ```bash
-bun install          # Install dependencies
-bun run dev          # Start dev server
-bun run build        # Build for production
-bun test             # Run tests
-bunx convex dev      # Start Convex dev
+bun install              # Install dependencies
+bun run dev              # Start dev server (next dev --turbopack)
+bun run build            # Custom build script
+bun run build:production # Convex deploy + next build
+bun run build:preview    # Convex deploy --preview
+bun test                 # Run tests (vitest)
+bun test:once            # Run tests once
+bun test:coverage        # Run tests with coverage
+bunx convex dev          # Start Convex dev
 ```
 
-## Project Structure
+## Project Structure (Actual)
 
 ```
 levsarah/
-├── app/                    # Next.js App Router pages
-│   ├── layout.tsx          # Root layout with ConvexProvider
-│   ├── page.tsx            # Redirect to /schedule
-│   ├── schedule/           # Main booking interface
-│   ├── abba/               # Kiosk display for Abba
-│   └── coordinator/        # Admin dashboard
-├── components/
-│   ├── schedule/           # WeekView, DayCard, SignupModal
-│   ├── display/            # AbbaDisplay, CurrentVisitor, Timeline
-│   └── common/             # HebrewDate, Avatar, shared components
+├── src/
+│   ├── app/                        # Next.js App Router pages
+│   │   ├── layout.tsx              # Root layout with ConvexAuthProvider, RTL, Heebo font
+│   │   ├── page.tsx                # Redirect to /schedule
+│   │   ├── globals.css             # Tailwind directives, RTL setup, animations
+│   │   ├── providers.tsx           # ConvexAuthProvider setup
+│   │   ├── schedule/
+│   │   │   └── page.tsx            # Main booking interface
+│   │   ├── abba/
+│   │   │   └── page.tsx            # Kiosk display for Abba
+│   │   ├── coordinator/
+│   │   │   └── page.tsx            # Coordinator dashboard with stats
+│   │   ├── admin/
+│   │   │   └── page.tsx            # Admin panel for user/invite management
+│   │   └── invite/
+│   │       └── [code]/
+│   │           └── page.tsx        # Invite link acceptance flow
+│   └── components/
+│       ├── schedule/
+│       │   ├── week-view.tsx       # 7-day calendar grid
+│       │   ├── day-card.tsx        # Individual day with 3 slots
+│       │   └── signup-modal.tsx    # Booking confirmation modal
+│       ├── display/
+│       │   ├── abba-display.tsx    # Full kiosk view
+│       │   ├── current-visitor.tsx # Large visitor card
+│       │   └── timeline.tsx        # Timeline of visits
+│       ├── auth/
+│       │   └── phone-login.tsx     # Phone number login with WhatsApp
+│       ├── profile/
+│       │   ├── profile-completion.tsx  # Photo upload flow
+│       │   └── invite-accept.tsx       # Invite acceptance UI
+│       └── common/
+│           ├── avatar.tsx              # User avatar with gradient fallback
+│           ├── hebrew-date.tsx         # Hebrew date display
+│           └── service-worker-register.tsx  # PWA registration
 ├── convex/
-│   ├── schema.ts           # Data model (users, visitSlots, specialDays, notifications)
-│   ├── users.ts            # User mutations/queries
-│   ├── visits.ts           # Booking mutations/queries
-│   ├── notifications.ts    # WhatsApp actions
-│   └── crons.ts            # Scheduled functions
+│   ├── schema.ts           # Data model (familyProfiles, invites, visitSlots, specialDays, notifications)
+│   ├── auth.ts             # Authentication setup
+│   ├── auth.config.ts      # Auth configuration
+│   ├── authHelpers.ts      # ensureUser, getAuthUserId utilities
+│   ├── users.ts            # getMyProfile, checkInvite, acceptInvite
+│   ├── visits.ts           # bookSlot, getSchedule, cancelBooking
+│   ├── scheduler.ts        # Schedule queries and helpers
+│   ├── coordinator.ts      # Dashboard stats, gaps, family members
+│   ├── admin.ts            # User management, invites, admin controls
+│   ├── notifications.ts    # WhatsApp messaging (Twilio Content API)
+│   ├── phoneAuth.ts        # Phone number authentication
+│   ├── crons.ts            # Scheduled functions for reminders
+│   ├── http.ts             # HTTP endpoints
+│   └── schema.test.ts      # Schema tests
 ├── lib/
-│   ├── hebrew-calendar.ts  # Hebcal wrapper utilities
-│   └── constants.ts        # App constants
-└── tests/
-    ├── unit/
-    ├── integration/
-    └── e2e/
+│   ├── types.ts            # TypeScript interfaces (SlotType, FamilyProfile, etc.)
+│   ├── constants.ts        # SLOTS, KFAR_CHABAD_LOCATION, WHATSAPP_TEMPLATES
+│   └── hebrew-calendar.ts  # Hebcal wrapper utilities (286 lines)
+├── tests/
+│   └── unit/
+│       └── hebrew-calendar.test.ts
+├── scripts/
+│   ├── build.mjs                   # Custom build script
+│   └── create-whatsapp-template.ts # WhatsApp template helper
+├── public/
+│   ├── manifest.json       # PWA manifest (RTL, Hebrew)
+│   ├── icon-192.png        # App icon
+│   ├── icon-512.png        # App icon
+│   ├── sw.js               # Service worker
+│   └── offline.html        # Offline fallback page
+├── package.json
+├── tsconfig.json           # Strict mode, path aliases (@/)
+├── tailwind.config.ts      # Hebrew font family (Heebo)
+├── postcss.config.mjs
+├── next.config.ts
+├── vitest.config.ts        # Edge runtime, 30s timeout
+├── .env                    # Environment variables
+├── .env.local              # Local overrides
+└── CLAUDE.md               # This file
 ```
 
 ## Coding Standards
@@ -127,14 +187,113 @@ export const getSchedule = query({
 - Use Tailwind utility classes, no custom CSS unless necessary
 - RTL support: use `rtl:` prefix or logical properties (`ms-`, `me-`, `ps-`, `pe-`)
 - Mobile breakpoints: `sm:`, `md:`, `lg:` (mobile-first)
-- Hebrew fonts: `font-hebrew` class for Hebrew text
+- Hebrew fonts: Uses Heebo from Google Fonts
 
 ```tsx
 // Example RTL-aware component
 <div className="flex flex-col gap-4 p-4 rtl:text-right">
-  <h1 className="text-2xl font-bold font-hebrew">לוח ביקורים</h1>
+  <h1 className="text-2xl font-bold">לוח ביקורים</h1>
 </div>
 ```
+
+## Data Model (Convex Schema)
+
+### Tables
+
+#### familyProfiles
+Extends auth users with family-specific data.
+```typescript
+{
+  userId: v.id("users"),           // Links to auth user
+  name: v.string(),                // Display name
+  hebrewName: v.optional(v.string()),
+  phone: v.string(),               // WhatsApp number
+  relationship: v.string(),        // "child" | "spouse" | "grandchild"
+  isAdmin: v.boolean(),
+  profileImage: v.optional(v.string()),
+  avatarGradient: v.optional(v.string()),
+  lastVisit: v.optional(v.string()),
+  profileCompleted: v.boolean(),
+}
+// Indexes: by_userId, by_phone, by_relationship, by_admin
+```
+
+#### invites
+Link-based invite system for new family members.
+```typescript
+{
+  phone: v.string(),
+  name: v.string(),
+  relationship: v.string(),
+  status: v.string(),              // "pending" | "sent" | "accepted" | "failed"
+  inviteCode: v.string(),          // Unique code for invite link
+  invitedBy: v.id("users"),
+  createdAt: v.number(),
+  sentAt: v.optional(v.number()),
+  acceptedAt: v.optional(v.number()),
+  error: v.optional(v.string()),
+}
+// Indexes: by_phone, by_status, by_inviteCode
+```
+
+#### visitSlots
+Individual booking slots.
+```typescript
+{
+  date: v.string(),                // ISO date (YYYY-MM-DD)
+  hebrewDate: v.string(),
+  slot: v.string(),                // "morning" | "afternoon" | "evening"
+  bookedBy: v.optional(v.id("familyProfiles")),
+  bookedAt: v.optional(v.number()),
+  notes: v.optional(v.string()),
+  isShabbat: v.boolean(),
+  isHoliday: v.boolean(),
+}
+// Indexes: by_date, by_date_slot, by_user
+```
+
+#### specialDays
+Holidays, yahrzeits, birthdays.
+```typescript
+{
+  hebrewDate: v.string(),
+  type: v.string(),                // "yahrzeit" | "birthday" | "holiday"
+  name: v.string(),
+  blocksVisits: v.boolean(),
+}
+// Indexes: by_hebrew_date
+```
+
+#### notifications
+WhatsApp notification queue.
+```typescript
+{
+  userId: v.id("users"),
+  type: v.string(),                // "reminder" | "confirmation" | "gap_alert" | "nudge" | "invite"
+  status: v.string(),              // "pending" | "sent" | "failed"
+  scheduledFor: v.number(),
+  sentAt: v.optional(v.number()),
+  twilioMessageId: v.optional(v.string()),
+}
+// Indexes: by_status, by_user, by_scheduled
+```
+
+## Authentication System
+
+Uses `@convex-dev/auth` with phone-based authentication via WhatsApp OTP.
+
+**Flow:**
+1. User enters phone number
+2. Receives WhatsApp OTP
+3. Verifies and creates auth session
+4. Links to familyProfile on first login
+5. New members use invite links (`/invite/[code]`)
+
+**Key Functions:**
+- `convex/auth.ts` - Auth setup
+- `convex/authHelpers.ts` - `ensureUser()`, `getAuthUserId()`
+- `convex/phoneAuth.ts` - Phone number validation
+- `src/components/auth/phone-login.tsx` - Login UI
 
 ## Slot Time Definitions
 
@@ -174,10 +333,19 @@ await twilioClient.messages.create({
 TWILIO_SID=AC...
 TWILIO_TOKEN=...
 WHATSAPP_SENDER=+16506102211
+WHATSAPP_BUSINESS_ACCOUNT_ID=...
+WHATSAPP_BUSINESS_MANAGER_ID=...
 
 # Convex
 CONVEX_DEPLOYMENT=...
 NEXT_PUBLIC_CONVEX_URL=...
+CONVEX_PREVIEW_DEPLOYMENT_KEY=...
+
+# Email (Resend)
+RESEND_API_KEY=...
+
+# Domain Management (Namecheap)
+NAMECHEAP_API_KEY=...
 ```
 
 ## Key Business Rules
@@ -191,6 +359,11 @@ NEXT_PUBLIC_CONVEX_URL=...
 
 ## Hebrew Calendar Integration
 
+**Location: Kfar Chabad**
+- Latitude: 31.9867
+- Longitude: 34.9167
+- Timezone: Asia/Jerusalem
+
 ```typescript
 import { HebrewCalendar, HDate } from '@hebcal/core';
 
@@ -202,25 +375,89 @@ const hebrewDateStr = hdate.toString('h'); // "כ״ב טבת תשפ״ו"
 const isShabbat = hdate.getDay() === 6; // Saturday
 
 // Get sunset time for date transition
-const sunset = HebrewCalendar.getSunset(hdate, 31.9867, 34.9167); // Kfar Chabad coords
+const sunset = HebrewCalendar.getSunset(hdate, 31.9867, 34.9167);
 ```
 
-## Testing Requirements
+**Implemented Features:**
+- Hebrew date rendering with gematriya
+- Shabbat detection (Friday evening + Saturday)
+- Holiday detection (major holidays block visits)
+- Candle lighting & Havdalah times
+- Parsha Ha-Shavua (weekly Torah portion)
+- Sunset-aware date transitions
 
-### Unit Tests (Vitest)
-- All Convex mutations and queries
-- Hebrew calendar utilities
-- Business logic functions
+## PWA Configuration
 
-### Integration Tests (convex-test)
-- Booking flow with conflict detection
-- Auth flow
-- Notification triggers
+**manifest.json:**
+```json
+{
+  "name": "לב שרה - תורנות ביקורים",
+  "short_name": "לב שרה",
+  "start_url": "/schedule",
+  "display": "standalone",
+  "dir": "rtl",
+  "lang": "he",
+  "theme_color": "#3b82f6"
+}
+```
 
-### E2E Tests (Playwright)
-- Full booking flow on mobile viewport
-- Abba Display on tablet viewport
-- Coordinator dashboard
+**Features:**
+- Service worker for offline support (`public/sw.js`)
+- Offline fallback page (`public/offline.html`)
+- App icons (192x192, 512x512)
+- RTL and Hebrew language support
+
+## Testing
+
+### Current Status
+- **Vitest**: Configured with edge-runtime, 30s timeout
+- **convex-test**: Configured for Convex function testing
+- **Unit tests**: `tests/unit/hebrew-calendar.test.ts`
+- **Schema tests**: `convex/schema.test.ts`
+
+### Gaps (TODO)
+- **E2E Tests**: Playwright not yet installed
+- **Integration Tests**: `tests/integration/` directory empty
+- **Coverage**: Limited test coverage
+
+### Running Tests
+```bash
+bun test              # Watch mode
+bun test:once         # Single run
+bun test:coverage     # With coverage report
+```
+
+## Implementation Status
+
+### Fully Implemented
+- Core booking system with slot management
+- Hebrew calendar integration
+- WhatsApp notifications via Twilio
+- Phone-based authentication
+- Admin panel for user management
+- Coordinator dashboard with gap detection
+- Link-based invite system
+- PWA with offline support
+- RTL layout throughout
+
+### Routes
+| Route | Description | Status |
+|-------|-------------|--------|
+| `/` | Redirect to /schedule | ✓ |
+| `/schedule` | Main booking interface | ✓ |
+| `/abba` | Kiosk display for Abba | ✓ |
+| `/coordinator` | Dashboard with stats | ✓ |
+| `/admin` | User/invite management | ✓ |
+| `/invite/[code]` | Invite acceptance | ✓ |
+
+### Components (12 total)
+| Category | Components |
+|----------|------------|
+| Schedule | WeekView, DayCard, SignupModal |
+| Display | AbbaDisplay, CurrentVisitor, Timeline |
+| Auth | PhoneLogin |
+| Profile | ProfileCompletion, InviteAccept |
+| Common | Avatar, HebrewDate, ServiceWorkerRegister |
 
 ## Important Notes for Agents
 
@@ -231,3 +468,18 @@ const sunset = HebrewCalendar.getSunset(hdate, 31.9867, 34.9167); // Kfar Chabad
 5. **Mobile viewport** is primary - test at 375px width
 6. **Accessibility**: Support screen readers, high contrast
 7. **Offline support**: PWA must show cached schedule when offline
+8. **Invite system**: Uses link-based codes (not WhatsApp OTP for invites)
+9. **Domain**: levsarah.org
+10. **Components are in `src/components/`** not root `components/`
+
+## Recent Changes (Git Log)
+
+- Domain updated to levsarah.org
+- Replaced WhatsApp login with PhoneLogin component
+- Replaced WhatsApp invites with link-based system
+- Added admin interface with invite management
+- Implemented Phase 2 - Core UI components and Abba Display
+
+---
+
+*Last updated: January 2026*

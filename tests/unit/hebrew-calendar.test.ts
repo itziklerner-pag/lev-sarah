@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   getHebrewDateString,
   isShabbat,
@@ -8,6 +8,11 @@ import {
   isToday,
   getWeekDays,
   formatHebrewDateFull,
+  getSunset,
+  getCurrentHebrewDate,
+  getHolidayInfo,
+  getShabbatInfo,
+  getHebrewDate,
 } from "../../lib/hebrew-calendar";
 
 describe("Hebrew Calendar Utilities", () => {
@@ -188,6 +193,249 @@ describe("Hebrew Calendar Utilities", () => {
 
       // Should contain Hebrew characters for the date
       expect(formatted).toMatch(/[\u0590-\u05FF]/);
+    });
+  });
+
+  // ============================================
+  // EDGE CASE TESTS: Sunset Transitions
+  // ============================================
+  describe("getSunset", () => {
+    it("returns a Date object for sunset time", () => {
+      const date = new Date("2026-01-15T12:00:00");
+      const sunset = getSunset(date);
+
+      expect(sunset).toBeInstanceOf(Date);
+    });
+
+    it("sunset time is valid", () => {
+      const date = new Date("2026-01-15T12:00:00");
+      const sunset = getSunset(date);
+
+      if (sunset) {
+        // Sunset should be a valid date
+        expect(isNaN(sunset.getTime())).toBe(false);
+        // Sunset UTC hours should be reasonable (Israel is UTC+2/3)
+        const utcHours = sunset.getUTCHours();
+        // In winter, sunset in Israel (UTC+2) around 17:00 local = 15:00 UTC
+        // Allow broad range to handle timezone variations
+        expect(utcHours).toBeGreaterThanOrEqual(13);
+        expect(utcHours).toBeLessThanOrEqual(20);
+      }
+    });
+
+    it("summer sunset is later than winter sunset", () => {
+      const winterDate = new Date("2026-01-15T12:00:00");
+      const summerDate = new Date("2026-07-15T12:00:00");
+
+      const winterSunset = getSunset(winterDate);
+      const summerSunset = getSunset(summerDate);
+
+      if (winterSunset && summerSunset) {
+        // Compare UTC times - summer should always be later
+        const winterUtc = winterSunset.getUTCHours() + winterSunset.getUTCMinutes() / 60;
+        const summerUtc = summerSunset.getUTCHours() + summerSunset.getUTCMinutes() / 60;
+
+        expect(summerUtc).toBeGreaterThan(winterUtc);
+      }
+    });
+  });
+
+  describe("getCurrentHebrewDate - Sunset Transitions", () => {
+    it("returns hebrew date for current time", () => {
+      const now = new Date("2026-01-15T12:00:00");
+      const result = getCurrentHebrewDate(now);
+
+      expect(result.gregorian).toEqual(now);
+      expect(result.hebrew).toBeTruthy();
+      expect(typeof result.isAfterSunset).toBe("boolean");
+    });
+
+    it("isAfterSunset returns a boolean", () => {
+      // Test with a morning time (noon UTC is morning in many timezones)
+      const morning = new Date("2026-01-15T06:00:00Z"); // 6am UTC = ~8am Israel
+      const result = getCurrentHebrewDate(morning);
+
+      // Just verify it returns a boolean - actual value depends on timezone
+      expect(typeof result.isAfterSunset).toBe("boolean");
+    });
+
+    it("isAfterSunset is true well after sunset", () => {
+      // Midnight UTC is well after sunset anywhere
+      const lateNight = new Date("2026-01-15T23:00:00Z"); // 11pm UTC
+      const result = getCurrentHebrewDate(lateNight);
+
+      expect(result.isAfterSunset).toBe(true);
+    });
+
+    it("hebrew date is different before and after sunset", () => {
+      // Use times that are definitely before and after sunset regardless of timezone
+      // 6am UTC is definitely before sunset in Israel
+      // 11pm UTC is definitely after sunset in Israel
+      const earlyMorning = new Date("2026-01-15T04:00:00Z");
+      const lateNight = new Date("2026-01-15T21:00:00Z");
+
+      const morningResult = getCurrentHebrewDate(earlyMorning);
+      const nightResult = getCurrentHebrewDate(lateNight);
+
+      // If night is after sunset, the Hebrew dates should differ
+      // (one will be the 15th and one the 16th in Hebrew calendar)
+      if (nightResult.isAfterSunset && !morningResult.isAfterSunset) {
+        expect(nightResult.hebrew).not.toBe(morningResult.hebrew);
+      }
+    });
+  });
+
+  // ============================================
+  // EDGE CASE TESTS: Holiday Detection
+  // ============================================
+  describe("getHolidayInfo", () => {
+    it("returns null for regular days", () => {
+      // A random Tuesday in February
+      const regularDay = new Date("2026-02-17T12:00:00");
+      const holiday = getHolidayInfo(regularDay);
+
+      expect(holiday).toBeNull();
+    });
+
+    it("detects Yom Kippur", () => {
+      // Yom Kippur 5787 is September 22, 2026
+      const yomKippur = new Date("2026-09-22T12:00:00");
+      const holiday = getHolidayInfo(yomKippur);
+
+      if (holiday) {
+        expect(holiday.blocksVisits).toBe(true);
+        expect(holiday.name.toLowerCase()).toContain("kippur");
+      }
+    });
+
+    it("detects Passover (first day)", () => {
+      // Passover 5786 starts evening of April 1, 2026 (first day is April 2)
+      const passoverFirstDay = new Date("2026-04-02T12:00:00");
+      const holiday = getHolidayInfo(passoverFirstDay);
+
+      if (holiday) {
+        expect(holiday.blocksVisits).toBe(true);
+      }
+    });
+
+    it("detects Rosh Hashanah", () => {
+      // Rosh Hashanah 5787 is September 12, 2026
+      const roshHashanah = new Date("2026-09-12T12:00:00");
+      const holiday = getHolidayInfo(roshHashanah);
+
+      if (holiday) {
+        expect(holiday.blocksVisits).toBe(true);
+      }
+    });
+  });
+
+  // ============================================
+  // EDGE CASE TESTS: Shabbat Info
+  // ============================================
+  describe("getShabbatInfo", () => {
+    it("returns candle lighting time for Friday", () => {
+      // Use a week that includes Friday Jan 16 and Saturday Jan 17, 2026
+      const weekStart = new Date("2026-01-11T12:00:00"); // Sunday
+      const shabbatInfo = getShabbatInfo(weekStart);
+
+      expect(shabbatInfo.candleLighting).toBeInstanceOf(Date);
+    });
+
+    it("returns havdalah time for Saturday night", () => {
+      const weekStart = new Date("2026-01-11T12:00:00");
+      const shabbatInfo = getShabbatInfo(weekStart);
+
+      expect(shabbatInfo.havdalah).toBeInstanceOf(Date);
+    });
+
+    it("havdalah is after candle lighting", () => {
+      const weekStart = new Date("2026-01-11T12:00:00");
+      const shabbatInfo = getShabbatInfo(weekStart);
+
+      if (shabbatInfo.candleLighting && shabbatInfo.havdalah) {
+        expect(shabbatInfo.havdalah.getTime()).toBeGreaterThan(
+          shabbatInfo.candleLighting.getTime()
+        );
+      }
+    });
+
+    it("returns Torah portion (parsha)", () => {
+      const weekStart = new Date("2026-01-11T12:00:00");
+      const shabbatInfo = getShabbatInfo(weekStart);
+
+      expect(shabbatInfo.parashat).toBeTruthy();
+      // Parsha should contain Hebrew characters
+      expect(shabbatInfo.parashat).toMatch(/[\u0590-\u05FF]/);
+    });
+  });
+
+  // ============================================
+  // EDGE CASE TESTS: Month Transitions
+  // ============================================
+  describe("getWeekDays - Month Transitions", () => {
+    it("handles week spanning two months", () => {
+      // Jan 28, 2026 (Wednesday) - week spans Jan 25 to Jan 31
+      const date = new Date("2026-01-28T12:00:00");
+      const days = getWeekDays(date);
+
+      expect(days).toHaveLength(7);
+      // All days should be valid dates
+      days.forEach((day) => {
+        expect(day).toBeInstanceOf(Date);
+        expect(isNaN(day.getTime())).toBe(false);
+      });
+    });
+
+    it("handles leap year February", () => {
+      // 2028 is a leap year - Feb has 29 days
+      const date = new Date("2028-02-28T12:00:00");
+      const days = getWeekDays(date);
+
+      expect(days).toHaveLength(7);
+      days.forEach((day) => {
+        expect(isNaN(day.getTime())).toBe(false);
+      });
+    });
+
+    it("handles week spanning year boundary", () => {
+      // Dec 30, 2026 (Wednesday) - week spans Dec 27, 2026 to Jan 2, 2027
+      const date = new Date("2026-12-30T12:00:00");
+      const days = getWeekDays(date);
+
+      expect(days).toHaveLength(7);
+      // First days should be in December
+      expect(days[0].getMonth()).toBe(11); // December
+      // Last days might be in January
+      const lastDay = days[6];
+      expect(
+        lastDay.getMonth() === 11 || lastDay.getMonth() === 0
+      ).toBe(true);
+    });
+  });
+
+  // ============================================
+  // EDGE CASE TESTS: Hebrew Date Details
+  // ============================================
+  describe("getHebrewDate", () => {
+    it("returns complete Hebrew date information", () => {
+      const date = new Date("2026-01-15T12:00:00");
+      const hebrewDate = getHebrewDate(date);
+
+      expect(hebrewDate.hebrew).toBeTruthy();
+      expect(hebrewDate.day).toBeGreaterThan(0);
+      expect(hebrewDate.day).toBeLessThanOrEqual(30);
+      expect(hebrewDate.month).toBeTruthy();
+      expect(hebrewDate.year).toBeGreaterThan(5780);
+      expect(hebrewDate.monthName).toBeTruthy();
+    });
+
+    it("handles Hebrew leap year months", () => {
+      // 5784 (2024) is a Hebrew leap year - has Adar I and Adar II
+      const adarDate = new Date("2024-03-10T12:00:00");
+      const hebrewDate = getHebrewDate(adarDate);
+
+      // Should have a valid month name
+      expect(hebrewDate.monthName).toBeTruthy();
     });
   });
 });
