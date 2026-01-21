@@ -1,17 +1,27 @@
 "use client";
 
 import { useAuthActions } from "@convex-dev/auth/react";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 
-type Step = "phone" | "otp";
+type Step = "phone" | "sent";
 
-export function PhoneLogin() {
+interface PhoneLoginProps {
+  /** Pre-fill phone number (from expired magic link resend flow) */
+  initialPhone?: string;
+  /** Auto-submit to resend link when coming from expired link */
+  autoResend?: boolean;
+  /** Callback when login is successful (not used - login happens via magic link click) */
+  onSuccess?: () => void;
+}
+
+export function PhoneLogin({ initialPhone, autoResend }: PhoneLoginProps) {
   const { signIn } = useAuthActions();
   const [step, setStep] = useState<Step>("phone");
-  const [phone, setPhone] = useState("");
-  const [otp, setOtp] = useState("");
+  const [phone, setPhone] = useState(initialPhone || "");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resendMessage, setResendMessage] = useState("");
+  const hasAutoResent = useRef(false);
 
   // Format phone for display
   const formatPhoneDisplay = (value: string) => {
@@ -44,38 +54,34 @@ export function PhoneLogin() {
     return `+972${digits}`;
   };
 
-  const handlePhoneSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handlePhoneSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     setError("");
     setLoading(true);
+    setResendMessage("");
 
     try {
       const internationalPhone = toInternational(phone);
       await signIn("whatsapp-phone", { phone: internationalPhone });
-      setStep("otp");
+      setStep("sent");
+      if (autoResend && hasAutoResent.current) {
+        setResendMessage("נשלח קישור חדש!");
+      }
     } catch (err) {
-      setError("שגיאה בשליחת הקוד. נסה שוב.");
+      setError("שגיאה בשליחת הקישור. נסה שוב.");
       console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleOtpSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-
-    try {
-      const internationalPhone = toInternational(phone);
-      await signIn("whatsapp-phone", { phone: internationalPhone, code: otp });
-    } catch (err) {
-      setError("קוד שגוי. נסה שוב.");
-      console.error(err);
-    } finally {
-      setLoading(false);
+  // Auto-resend when coming from expired magic link
+  useEffect(() => {
+    if (initialPhone && autoResend && !hasAutoResent.current && phone.length >= 9) {
+      hasAutoResent.current = true;
+      handlePhoneSubmit();
     }
-  };
+  }, [initialPhone, autoResend, phone]);
 
   if (step === "phone") {
     return (
@@ -101,64 +107,79 @@ export function PhoneLogin() {
           <p className="text-red-600 text-sm text-center">{error}</p>
         )}
 
+        {resendMessage && (
+          <p className="text-green-600 text-sm text-center">{resendMessage}</p>
+        )}
+
         <button
           type="submit"
           disabled={loading || phone.length < 9}
           className="w-full py-3 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
         >
-          {loading ? "שולח..." : "שלח קוד בוואטסאפ"}
+          {loading ? "שולח..." : "שלח קישור בוואטסאפ"}
         </button>
+
+        <p className="text-xs text-gray-500 text-center">
+          נשלח לך קישור להתחברות מהירה בוואטסאפ
+        </p>
       </form>
     );
   }
 
+  // "sent" step - show check WhatsApp message
   return (
-    <form onSubmit={handleOtpSubmit} className="w-full max-w-xs space-y-4">
-      <div>
-        <label htmlFor="otp" className="block text-sm font-medium text-gray-700 mb-1">
-          קוד אימות
-        </label>
-        <p className="text-xs text-gray-500 mb-2">
-          נשלח קוד לוואטסאפ שלך ({formatPhoneDisplay(phone)})
+    <div className="w-full max-w-xs space-y-4 text-center">
+      <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+        <svg
+          className="w-12 h-12 mx-auto text-green-500 mb-3"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+          />
+        </svg>
+        <h3 className="text-lg font-semibold text-gray-800 mb-2">
+          נשלח קישור לוואטסאפ!
+        </h3>
+        <p className="text-sm text-gray-600">
+          פתח את הוואטסאפ ולחץ על כפתור ההתחברות
         </p>
-        <input
-          id="otp"
-          type="text"
-          inputMode="numeric"
-          value={otp}
-          onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-          placeholder="000000"
-          className="w-full px-4 py-3 text-2xl tracking-[0.5em] border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center font-mono"
-          dir="ltr"
-          autoComplete="one-time-code"
-          autoFocus
-          required
-        />
+        <p className="text-xs text-gray-500 mt-2">
+          ({formatPhoneDisplay(phone)})
+        </p>
       </div>
 
-      {error && (
-        <p className="text-red-600 text-sm text-center">{error}</p>
+      {resendMessage && (
+        <p className="text-green-600 text-sm">{resendMessage}</p>
       )}
-
-      <button
-        type="submit"
-        disabled={loading || otp.length !== 6}
-        className="w-full py-3 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-      >
-        {loading ? "מאמת..." : "כניסה"}
-      </button>
 
       <button
         type="button"
         onClick={() => {
           setStep("phone");
-          setOtp("");
           setError("");
         }}
         className="w-full py-2 text-sm text-gray-600 hover:text-gray-800"
       >
-        שלח קוד חדש
+        שלח שוב לטלפון אחר
       </button>
-    </form>
+
+      <button
+        type="button"
+        onClick={() => {
+          setResendMessage("");
+          handlePhoneSubmit();
+        }}
+        disabled={loading}
+        className="w-full py-2 text-sm text-blue-600 hover:text-blue-800 disabled:text-gray-400"
+      >
+        {loading ? "שולח..." : "שלח קישור חדש"}
+      </button>
+    </div>
   );
 }

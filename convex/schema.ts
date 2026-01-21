@@ -98,6 +98,20 @@ export default defineSchema({
     blocksVisits: v.boolean(),
   }).index("by_hebrew_date", ["hebrewDate"]),
 
+  // Magic link tokens for passwordless authentication
+  // Token itself is used as verification code (no separate OTP)
+  magicLinkTokens: defineTable({
+    phone: v.string(), // Normalized phone (+972...)
+    token: v.string(), // 32-char secure random token (used as verification code)
+    expiresAt: v.number(), // Timestamp (10 min from creation)
+    used: v.boolean(), // Single-use flag
+    returnUrl: v.optional(v.string()), // Custom return URL after login
+    createdAt: v.number(),
+  })
+    .index("by_phone", ["phone"])
+    .index("by_token", ["token"])
+    .index("by_expires", ["expiresAt"]),
+
   // Notification queue
   notifications: defineTable({
     userId: v.id("familyProfiles"),

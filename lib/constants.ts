@@ -69,4 +69,15 @@ export const WHATSAPP_TEMPLATES = {
   visitConfirmation: "HX5acc3b264e947ebfaf4c0a87d41b67ed",
   visitReminder: "HX922d58d14a871614c1595cd9748d6367",
   gapAlert: "HX92aa09f05f109de0ff8afc3762f9b2f2",
+  // OTP + Magic Link template (UTILITY category) - set via WHATSAPP_OTP_MAGIC_LINK_TEMPLATE_SID env var
+  // After Meta approval, add the SID here: otpWithMagicLink: "HX..."
+} as const;
+
+/**
+ * Magic link configuration
+ */
+export const MAGIC_LINK_CONFIG = {
+  tokenExpiryMs: 10 * 60 * 1000, // 10 minutes
+  tokenLength: 32,
+  baseUrl: "https://levsarah.org/auth/magic-link",
 } as const;

@@ -36,4 +36,16 @@ crons.cron(
   internal.scheduler.weeklyActivityNudge
 );
 
+// TODO: Uncomment after first deploy (types need to be generated)
+// /**
+//  * Clean up expired magic link tokens daily
+//  * Removes tokens that have been expired for more than 24 hours
+//  * Runs at 3:00 AM Israel time (0:00 UTC)
+//  */
+// crons.cron(
+//   "cleanup expired magic link tokens",
+//   "0 0 * * *",
+//   internal.magicLink.cleanupExpiredTokens
+// );
+
 export default crons;

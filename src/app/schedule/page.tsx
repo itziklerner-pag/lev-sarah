@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, Suspense } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
+import { useSearchParams } from "next/navigation";
 import { api } from "../../../convex/_generated/api";
 import { PhoneLogin } from "@/components/auth/phone-login";
 import { WeekView } from "@/components/schedule/week-view";
@@ -36,10 +37,15 @@ interface Invite {
   status: string;
 }
 
-export default function SchedulePage() {
+function ScheduleContent() {
   const { isAuthenticated, isLoading } = useConvexAuth();
+  const searchParams = useSearchParams();
   const [bookingSelection, setBookingSelection] = useState<BookingSelection | null>(null);
   const [showProfileCompletion, setShowProfileCompletion] = useState(false);
+
+  // Get URL params for magic link resend flow
+  const initialPhone = searchParams.get("phone") || undefined;
+  const autoResend = searchParams.get("resend") === "true";
 
   // Get current user's profile
   const myProfile = useQuery(
@@ -83,7 +89,7 @@ export default function SchedulePage() {
           <h1 className="text-3xl font-bold">לב שרה</h1>
           <p className="text-gray-600 mt-2">תורנות ביקורים אצל אבא</p>
         </div>
-        <PhoneLogin />
+        <PhoneLogin initialPhone={initialPhone} autoResend={autoResend} />
       </main>
     );
   }
@@ -229,5 +235,19 @@ export default function SchedulePage() {
         />
       )}
     </main>
+  );
+}
+
+export default function SchedulePage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center">
+          <div className="animate-pulse text-2xl text-gray-500">טוען...</div>
+        </main>
+      }
+    >
+      <ScheduleContent />
+    </Suspense>
   );
 }
