@@ -14,11 +14,13 @@ import type * as authHelpers from "../authHelpers.js";
 import type * as coordinator from "../coordinator.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
+import type * as magicLink from "../magicLink.js";
 import type * as notifications from "../notifications.js";
 import type * as phoneAuth from "../phoneAuth.js";
 import type * as scheduler from "../scheduler.js";
 import type * as users from "../users.js";
 import type * as visits from "../visits.js";
+import type * as whatsappWebhook from "../whatsappWebhook.js";
 
 import type {
   ApiFromModules,
@@ -33,11 +35,13 @@ declare const fullApi: ApiFromModules<{
   coordinator: typeof coordinator;
   crons: typeof crons;
   http: typeof http;
+  magicLink: typeof magicLink;
   notifications: typeof notifications;
   phoneAuth: typeof phoneAuth;
   scheduler: typeof scheduler;
   users: typeof users;
   visits: typeof visits;
+  whatsappWebhook: typeof whatsappWebhook;
 }>;
 
 /**

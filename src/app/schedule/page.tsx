@@ -9,6 +9,7 @@ import { WeekView } from "@/components/schedule/week-view";
 import { SignupModal } from "@/components/schedule/signup-modal";
 import { InviteAccept } from "@/components/profile/invite-accept";
 import { ProfileCompletion } from "@/components/profile/profile-completion";
+import { UserMenu } from "@/components/common/user-menu";
 import type { SlotType } from "../../../lib/types";
 import Link from "next/link";
 
@@ -43,9 +44,10 @@ function ScheduleContent() {
   const [bookingSelection, setBookingSelection] = useState<BookingSelection | null>(null);
   const [showProfileCompletion, setShowProfileCompletion] = useState(false);
 
-  // Get URL params for magic link resend flow
+  // Get URL params for magic link flow
   const initialPhone = searchParams.get("phone") || undefined;
   const autoResend = searchParams.get("resend") === "true";
+  const magicToken = searchParams.get("token") || undefined;
 
   // Get current user's profile
   const myProfile = useQuery(
@@ -89,7 +91,7 @@ function ScheduleContent() {
           <h1 className="text-3xl font-bold">לב שרה</h1>
           <p className="text-gray-600 mt-2">תורנות ביקורים אצל אבא</p>
         </div>
-        <PhoneLogin initialPhone={initialPhone} autoResend={autoResend} />
+        <PhoneLogin initialPhone={initialPhone} autoResend={autoResend} magicToken={magicToken} />
       </main>
     );
   }
@@ -179,21 +181,11 @@ function ScheduleContent() {
                 ניהול
               </Link>
             )}
-            {myProfile.imageUrl ? (
-              <img
-                src={myProfile.imageUrl}
-                alt={myProfile.name}
-                className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-sm"
-              />
-            ) : (
-              <button
-                onClick={() => setShowProfileCompletion(true)}
-                className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-bold text-lg shadow-sm"
-                title="הוסף תמונה"
-              >
-                {myProfile.name.charAt(0)}
-              </button>
-            )}
+            <UserMenu
+              name={myProfile.name}
+              imageUrl={myProfile.imageUrl}
+              onProfileClick={() => setShowProfileCompletion(true)}
+            />
           </div>
         </div>
       </header>

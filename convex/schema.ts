@@ -112,6 +112,36 @@ export default defineSchema({
     .index("by_token", ["token"])
     .index("by_expires", ["expiresAt"]),
 
+  // Pending registration requests (via WhatsApp)
+  registrationRequests: defineTable({
+    phone: v.string(),
+    name: v.optional(v.string()),
+    relationship: v.optional(
+      v.union(
+        v.literal("בן"),
+        v.literal("בת"),
+        v.literal("נכד"),
+        v.literal("נכדה"),
+        v.literal("נינה"),
+        v.literal("קרוב"),
+        v.literal("קרובה")
+      )
+    ),
+    status: v.union(
+      v.literal("pending_details"), // Waiting for user to provide details
+      v.literal("pending_approval"), // Waiting for admin approval
+      v.literal("approved"),
+      v.literal("rejected")
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    approvedBy: v.optional(v.id("familyProfiles")),
+    approvedAt: v.optional(v.number()),
+    rejectedReason: v.optional(v.string()),
+  })
+    .index("by_phone", ["phone"])
+    .index("by_status", ["status"]),
+
   // Notification queue
   notifications: defineTable({
     userId: v.id("familyProfiles"),

@@ -2,26 +2,81 @@
 
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useState, useEffect, useRef } from "react";
+import { useMutation } from "convex/react";
+import { api } from "../../../convex/_generated/api";
 
-type Step = "phone" | "sent";
+type Step = "phone" | "sent" | "verifying";
 
 interface PhoneLoginProps {
   /** Pre-fill phone number (from expired magic link resend flow) */
   initialPhone?: string;
   /** Auto-submit to resend link when coming from expired link */
   autoResend?: boolean;
+  /** Magic link token from URL (auto-verify and sign in) */
+  magicToken?: string;
   /** Callback when login is successful (not used - login happens via magic link click) */
   onSuccess?: () => void;
 }
 
-export function PhoneLogin({ initialPhone, autoResend }: PhoneLoginProps) {
+export function PhoneLogin({ initialPhone, autoResend, magicToken }: PhoneLoginProps) {
   const { signIn } = useAuthActions();
+  const consumeToken = useMutation(api.magicLink.consumeMagicLinkToken);
   const [step, setStep] = useState<Step>("phone");
   const [phone, setPhone] = useState(initialPhone || "");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [resendMessage, setResendMessage] = useState("");
   const hasAutoResent = useRef(false);
+  const hasTriedMagicToken = useRef(false);
+
+  // Handle magic token auto-verification
+  useEffect(() => {
+    if (magicToken && !hasTriedMagicToken.current) {
+      hasTriedMagicToken.current = true;
+      handleMagicTokenVerification(magicToken);
+    }
+  }, [magicToken]);
+
+  const handleMagicTokenVerification = async (token: string) => {
+    setStep("verifying");
+    setError("");
+    setLoading(true);
+
+    try {
+      // 1. Consume the token to get phone and verification code
+      const result = await consumeToken({ token });
+
+      if (!result.success) {
+        throw new Error("Invalid or expired token");
+      }
+
+      // 2. Sign in with the phone and code
+      await signIn("whatsapp-phone", {
+        phone: result.phone,
+        code: result.code,
+      });
+
+      // Login successful - auth state will update automatically
+      console.log("Magic link authentication successful for", result.phone);
+    } catch (err) {
+      console.error("Magic token verification error:", err);
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+
+      // Handle specific error cases
+      if (errorMessage.includes("expired") || errorMessage.includes("Token expired")) {
+        setError("הקישור פג תוקף. שלח קישור חדש.");
+        setStep("phone");
+      } else if (errorMessage.includes("used") || errorMessage.includes("already used")) {
+        setError("הקישור כבר נוצל. שלח קישור חדש.");
+        setStep("phone");
+      } else {
+        setError("שגיאה באימות. נסה שוב או שלח קישור חדש.");
+        setStep("phone");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Format phone for display
   const formatPhoneDisplay = (value: string) => {
@@ -82,6 +137,42 @@ export function PhoneLogin({ initialPhone, autoResend }: PhoneLoginProps) {
       handlePhoneSubmit();
     }
   }, [initialPhone, autoResend, phone]);
+
+  // "verifying" step - show verifying magic link
+  if (step === "verifying") {
+    return (
+      <div className="w-full max-w-xs space-y-4 text-center">
+        <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+          <div className="w-12 h-12 mx-auto mb-3">
+            <svg
+              className="animate-spin h-12 w-12 text-blue-600"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              />
+            </svg>
+          </div>
+          <h3 className="text-lg font-semibold text-gray-800 mb-2">
+            מאמת קישור...
+          </h3>
+          <p className="text-sm text-gray-600">רגע אחד, מתחבר למערכת</p>
+        </div>
+      </div>
+    );
+  }
 
   if (step === "phone") {
     return (

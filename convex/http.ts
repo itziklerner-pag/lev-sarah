@@ -56,6 +56,72 @@ http.route({
   }),
 });
 
+/**
+ * Twilio WhatsApp Webhook
+ * Receives incoming WhatsApp messages and processes them
+ */
+http.route({
+  path: "/api/whatsapp/webhook",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      // Parse form data from Twilio
+      const formData = await request.formData();
+      const from = formData.get("From") as string;
+      const body = formData.get("Body") as string;
+      const messageSid = formData.get("MessageSid") as string;
+
+      console.log(`WhatsApp webhook received: From=${from}, Body=${body}, SID=${messageSid}`);
+
+      if (!from || !body) {
+        return new Response("Missing required fields", { status: 400 });
+      }
+
+      const phone = from.replace("whatsapp:", "");
+
+      // Check if this is an admin response (approval/rejection)
+      const isAdminCommand = body.trim().startsWith("אשר") || body.trim().startsWith("דחה");
+
+      if (isAdminCommand) {
+        // Handle admin approval/rejection
+        await ctx.runAction(internal.whatsappWebhook.handleAdminResponse, {
+          from,
+          body,
+        });
+      } else {
+        // Handle regular user message
+        await ctx.runAction(internal.whatsappWebhook.handleIncomingWhatsApp, {
+          from,
+          body,
+        });
+      }
+
+      // Return TwiML response (empty is fine for WhatsApp)
+      return new Response(
+        '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+        {
+          status: 200,
+          headers: { "Content-Type": "application/xml" },
+        }
+      );
+    } catch (error) {
+      console.error("WhatsApp webhook error:", error);
+      return new Response("Internal server error", { status: 500 });
+    }
+  }),
+});
+
+/**
+ * Twilio WhatsApp Webhook - GET for verification
+ */
+http.route({
+  path: "/api/whatsapp/webhook",
+  method: "GET",
+  handler: httpAction(async () => {
+    return new Response("WhatsApp webhook is active", { status: 200 });
+  }),
+});
+
 // Add Convex Auth HTTP routes
 auth.addHttpRoutes(http);
 
