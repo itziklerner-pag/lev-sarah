@@ -32,15 +32,18 @@ console.log(`Has NEXT_PUBLIC_CONVEX_URL: ${hasConvexUrl}`);
 let buildCommand;
 
 if (isVercel) {
-  if (vercelEnv === 'production') {
-    // Production deployment - deploy to main Convex deployment
-    console.log('Running production build with Convex deploy...');
-    buildCommand = "npx convex deploy --yes --cmd 'next build' --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL";
-  } else if (hasDeployKey) {
-    // Preview with deploy key - try to use preview deployment
-    // Note: This requires a "Preview" type deploy key from Convex
-    console.log('Running preview build with Convex deploy...');
-    buildCommand = "npx convex deploy --yes --cmd 'next build' --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL";
+  if (vercelEnv === 'production' || hasDeployKey) {
+    // Production or preview deployment with deploy key
+    // Run convex deploy first to generate types, then next build
+    console.log('Running Convex deploy first to generate types...');
+    try {
+      execSync('npx convex deploy --yes', { stdio: 'inherit', env: process.env });
+      console.log('Convex deploy completed, now running Next.js build...');
+      buildCommand = 'npx next build';
+    } catch (error) {
+      console.error('Convex deploy failed:', error.message);
+      process.exit(1);
+    }
   } else if (hasConvexUrl) {
     // Preview without deploy key but with URL - just build Next.js
     console.log('Running preview build (Next.js only, using existing Convex URL)...');
@@ -51,9 +54,16 @@ if (isVercel) {
     process.exit(1);
   }
 } else {
-  // Local build
+  // Local build - run convex deploy first, then next build
   console.log('Running local build...');
-  buildCommand = "npx convex deploy --yes --cmd 'next build' --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL";
+  try {
+    execSync('npx convex deploy --yes', { stdio: 'inherit', env: process.env });
+    console.log('Convex deploy completed, now running Next.js build...');
+    buildCommand = 'npx next build';
+  } catch (error) {
+    console.error('Convex deploy failed:', error.message);
+    process.exit(1);
+  }
 }
 
 console.log(`Executing: ${buildCommand}`);
