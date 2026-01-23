@@ -17,11 +17,20 @@ http.route({
   path: "/api/internal/store-magic-token",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
+    console.log("[HTTP] store-magic-token endpoint called");
+
     // Verify internal secret
     const secret = request.headers.get("X-Internal-Secret");
     const expectedSecret = process.env.INTERNAL_API_SECRET;
 
+    console.log("[HTTP] Secret check:", {
+      hasSecret: !!secret,
+      hasExpectedSecret: !!expectedSecret,
+      secretMatch: secret === expectedSecret,
+    });
+
     if (!expectedSecret || secret !== expectedSecret) {
+      console.log("[HTTP] Unauthorized - secret mismatch");
       return new Response("Unauthorized", { status: 401 });
     }
 
@@ -33,7 +42,14 @@ http.route({
         returnUrl?: string;
       };
 
+      console.log("[HTTP] Received token storage request:", {
+        phone,
+        tokenPrefix: token?.substring(0, 8),
+        returnUrl,
+      });
+
       if (!phone || !token) {
+        console.log("[HTTP] Missing phone or token");
         return new Response("Missing phone or token", { status: 400 });
       }
 
@@ -45,12 +61,13 @@ http.route({
         returnUrl,
       });
 
+      console.log("[HTTP] Token stored successfully");
       return new Response(JSON.stringify({ success: true }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
     } catch (error) {
-      console.error("Error storing magic link token:", error);
+      console.error("[HTTP] Error storing magic link token:", error);
       return new Response("Internal server error", { status: 500 });
     }
   }),

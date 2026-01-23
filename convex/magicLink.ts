@@ -187,6 +187,96 @@ export const getPhoneFromToken = internalQuery({
 });
 
 /**
+ * Debug query: List all magic link tokens
+ * Used for debugging authentication issues
+ */
+export const debugListTokens = query({
+  args: {},
+  handler: async (ctx) => {
+    const tokens = await ctx.db.query("magicLinkTokens").collect();
+    return tokens.map((t) => ({
+      phone: t.phone,
+      tokenPrefix: t.token.substring(0, 8) + "...",
+      expiresAt: new Date(t.expiresAt).toISOString(),
+      used: t.used,
+      createdAt: new Date(t.createdAt).toISOString(),
+    }));
+  },
+});
+
+/**
+ * Debug query: List registration requests
+ */
+export const debugListRegistrationRequests = query({
+  args: {},
+  handler: async (ctx) => {
+    const requests = await ctx.db.query("registrationRequests").collect();
+    return requests;
+  },
+});
+
+/**
+ * Debug query: List family profiles
+ */
+export const debugListProfiles = query({
+  args: {},
+  handler: async (ctx) => {
+    const profiles = await ctx.db.query("familyProfiles").collect();
+    return profiles;
+  },
+});
+
+/**
+ * Debug query: List invites
+ */
+export const debugListInvites = query({
+  args: {},
+  handler: async (ctx) => {
+    const invites = await ctx.db.query("invites").collect();
+    return invites;
+  },
+});
+
+/**
+ * Debug mutation: Create a test token
+ * This bypasses the normal auth flow for testing the magic link page
+ */
+export const debugCreateTestToken = mutation({
+  args: {
+    phone: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const token = generateSecureToken();
+    const expiresAt = Date.now() + TOKEN_EXPIRY_MS;
+
+    // Delete any existing tokens for this phone
+    const existingTokens = await ctx.db
+      .query("magicLinkTokens")
+      .withIndex("by_phone", (q) => q.eq("phone", args.phone))
+      .collect();
+
+    for (const existingToken of existingTokens) {
+      await ctx.db.delete(existingToken._id);
+    }
+
+    // Create new token
+    await ctx.db.insert("magicLinkTokens", {
+      phone: args.phone,
+      token,
+      expiresAt,
+      used: false,
+      createdAt: Date.now(),
+    });
+
+    return {
+      token,
+      magicLinkUrl: `https://levsarah.org/auth/magic-link?token=${token}`,
+      localUrl: `http://localhost:3000/auth/magic-link?token=${token}`,
+    };
+  },
+});
+
+/**
  * Internal mutation: Clean up expired tokens
  * Removes tokens that have been expired for more than 24 hours
  * Should be called by a daily cron job

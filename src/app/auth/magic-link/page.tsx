@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useConvexAuth } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "../../../../convex/_generated/api";
 import { useState, useEffect, useCallback, useRef, Suspense } from "react";
@@ -12,11 +12,14 @@ function MagicLinkContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const token = searchParams.get("token");
+  const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
 
   const [state, setState] = useState<PageState>("validating");
   const [phone, setPhone] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>("");
+  const [returnUrl, setReturnUrl] = useState<string>("/schedule");
   const hasAttemptedAuth = useRef(false);
+  const hasRedirected = useRef(false);
 
   const tokenValidation = useQuery(
     api.magicLink.validateMagicLinkToken,
@@ -27,68 +30,115 @@ function MagicLinkContent() {
   const { signIn } = useAuthActions();
 
   const handleAuthenticate = useCallback(async () => {
-    if (!token || hasAttemptedAuth.current) return;
+    console.log("[MagicLink] handleAuthenticate called", {
+      token: token ? `${token.substring(0, 8)}...` : null,
+      hasAttemptedAuth: hasAttemptedAuth.current,
+    });
+
+    if (!token || hasAttemptedAuth.current) {
+      console.log("[MagicLink] Skipping auth - no token or already attempted");
+      return;
+    }
     hasAttemptedAuth.current = true;
 
     setState("authenticating");
 
     try {
       // 1. Consume the magic link token and get the verification code
+      console.log("[MagicLink] Consuming token...");
       const result = await consumeToken({ token });
+      console.log("[MagicLink] consumeToken result:", {
+        success: result.success,
+        phone: result.phone,
+        hasCode: !!result.code,
+        returnUrl: result.returnUrl,
+      });
 
       if (!result.success || !result.code) {
+        console.log("[MagicLink] Token consumption failed");
         setState("error");
         setErrorMessage("Failed to verify token");
         return;
       }
 
+      // Store return URL for redirect after auth settles
+      setReturnUrl(result.returnUrl || "/schedule");
+
       // 2. Sign in via Convex Auth using the phone and the token as the code
       // The magic link token is also the verification code for the Phone provider
+      console.log("[MagicLink] Calling signIn with phone:", result.phone);
       await signIn("whatsapp-phone", {
         phone: result.phone,
         code: result.code,
       });
+      console.log("[MagicLink] signIn completed successfully");
 
+      // Set success state - useEffect will handle redirect once auth is confirmed
       setState("success");
-
-      // Redirect to return URL or schedule
-      const returnUrl = result.returnUrl || "/schedule";
-      setTimeout(() => {
-        router.push(returnUrl);
-      }, 1000);
     } catch (err) {
-      console.error("Magic link authentication error:", err);
+      console.error("[MagicLink] Authentication error:", err);
       setState("error");
       setErrorMessage("Authentication failed. The link may have expired.");
     }
-  }, [token, consumeToken, signIn, router]);
+  }, [token, consumeToken, signIn]);
+
+  // Redirect once auth is fully settled (after success state)
+  useEffect(() => {
+    if (
+      state === "success" &&
+      isAuthenticated &&
+      !isAuthLoading &&
+      !hasRedirected.current
+    ) {
+      hasRedirected.current = true;
+      // Small delay to ensure state is fully propagated
+      setTimeout(() => {
+        router.push(returnUrl);
+      }, 200);
+    }
+  }, [state, isAuthenticated, isAuthLoading, returnUrl, router]);
 
   // Handle token validation result
   useEffect(() => {
+    console.log("[MagicLink] useEffect triggered", {
+      token: token ? `${token.substring(0, 8)}...` : null,
+      tokenValidation,
+      state,
+      hasAttemptedAuth: hasAttemptedAuth.current,
+    });
+
     if (!token) {
+      console.log("[MagicLink] No token in URL");
       setState("error");
       setErrorMessage("Missing token");
       return;
     }
 
     if (tokenValidation === undefined) {
+      console.log("[MagicLink] Token validation still loading...");
       // Still loading
       return;
     }
 
+    console.log("[MagicLink] Token validation result:", tokenValidation);
+
     if (tokenValidation.valid) {
+      console.log("[MagicLink] Token is valid, proceeding with auth");
       setPhone(tokenValidation.phone);
       // Auto-proceed with authentication
       handleAuthenticate();
     } else if (tokenValidation.error === "TOKEN_EXPIRED") {
+      console.log("[MagicLink] Token expired");
       setState("expired");
       if ("phone" in tokenValidation) {
         setPhone(tokenValidation.phone);
       }
     } else if (tokenValidation.error === "TOKEN_ALREADY_USED") {
+      console.log("[MagicLink] Token already used");
       setState("error");
       setErrorMessage("This link has already been used.");
     } else {
+      console.log("[MagicLink] Token invalid:", tokenValidation.error);
       setState("error");
       setErrorMessage("Invalid or expired link.");
     }

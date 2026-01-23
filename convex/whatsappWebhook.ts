@@ -35,19 +35,55 @@ function generateSecureToken(): string {
 }
 
 /**
+ * Generate all possible phone number variants for matching
+ */
+function getPhoneVariants(phone: string): string[] {
+  // Remove all non-digits
+  const digits = phone.replace(/\D/g, "");
+
+  const variants = new Set<string>();
+
+  // Add the raw digits
+  variants.add(digits);
+
+  // Add with + prefix
+  variants.add(`+${digits}`);
+
+  // Handle Israeli numbers (972)
+  if (digits.startsWith("972")) {
+    const withoutCountry = digits.slice(3);
+    variants.add(withoutCountry);
+    variants.add(`0${withoutCountry}`);
+    variants.add(`+972${withoutCountry}`);
+  }
+
+  // Handle numbers starting with 0 (Israeli local format)
+  if (digits.startsWith("0")) {
+    const withoutZero = digits.slice(1);
+    variants.add(withoutZero);
+    variants.add(`972${withoutZero}`);
+    variants.add(`+972${withoutZero}`);
+  }
+
+  // Handle US numbers (1)
+  if (digits.startsWith("1") && digits.length === 11) {
+    variants.add(digits.slice(1));
+    variants.add(`+${digits}`);
+  }
+
+  return Array.from(variants);
+}
+
+/**
  * Check if a phone number is registered in the system
  */
 export const checkPhoneRegistration = internalQuery({
   args: { phone: v.string() },
   handler: async (ctx, args) => {
-    // Normalize phone number
-    const normalizedPhone = args.phone.replace(/\D/g, "");
-    const phoneVariants = [
-      normalizedPhone,
-      `+${normalizedPhone}`,
-      normalizedPhone.startsWith("1") ? normalizedPhone.slice(1) : normalizedPhone,
-      normalizedPhone.startsWith("972") ? normalizedPhone.replace(/^972/, "") : normalizedPhone,
-    ];
+    const phoneVariants = getPhoneVariants(args.phone);
+
+    console.log(`Checking phone registration for: ${args.phone}`);
+    console.log(`Phone variants to check: ${phoneVariants.join(", ")}`);
 
     // Check familyProfiles for any matching phone
     for (const phone of phoneVariants) {
@@ -56,20 +92,25 @@ export const checkPhoneRegistration = internalQuery({
         .withIndex("by_phone", (q) => q.eq("phone", phone))
         .first();
       if (profile) {
-        return { registered: true, profile };
-      }
-
-      // Also check with + prefix
-      const profileWithPlus = await ctx.db
-        .query("familyProfiles")
-        .withIndex("by_phone", (q) => q.eq("phone", `+${phone}`))
-        .first();
-      if (profileWithPlus) {
-        return { registered: true, profile: profileWithPlus };
+        console.log(`Found profile with phone: ${phone}`);
+        return { registered: true, profile, hasInvite: false, invite: null };
       }
     }
 
-    return { registered: false, profile: null };
+    // Check for pending invites (user was invited but hasn't registered yet)
+    for (const phone of phoneVariants) {
+      const invite = await ctx.db
+        .query("invites")
+        .withIndex("by_phone", (q) => q.eq("phone", phone))
+        .first();
+      if (invite && invite.status !== "accepted") {
+        console.log(`Found invite with phone: ${phone}, status: ${invite.status}`);
+        return { registered: false, profile: null, hasInvite: true, invite };
+      }
+    }
+
+    console.log(`No profile or invite found for any variant`);
+    return { registered: false, profile: null, hasInvite: false, invite: null };
   },
 });
 
@@ -325,11 +366,11 @@ export const handleIncomingWhatsApp = internalAction({
 
     console.log(`Incoming WhatsApp from ${phone}: ${message}`);
 
-    // Check if user is registered
+    // Check if user is registered or has an invite
     const registrationCheck = await ctx.runQuery(
       internal.whatsappWebhook.checkPhoneRegistration,
       { phone }
-    );
+    ) as { registered: boolean; profile: any; hasInvite: boolean; invite: any };
 
     if (registrationCheck.registered) {
       // User is registered - send magic link
@@ -349,6 +390,28 @@ export const handleIncomingWhatsApp = internalAction({
           message: "שלום! נסה שוב בעוד כמה דקות או התחבר דרך האתר: https://levsarah.org",
         });
         return { action: "error", error: sendResult.error };
+      }
+    }
+
+    // User has a pending invite - send magic link directly
+    if (registrationCheck.hasInvite && registrationCheck.invite) {
+      console.log(`User ${phone} has pending invite, sending magic link`);
+
+      const sendResult = await ctx.runAction(
+        internal.whatsappWebhook.sendMagicLinkWhatsApp,
+        { phone }
+      ) as { success: boolean; error?: string };
+
+      if (sendResult.success) {
+        return { action: "magic_link_sent_for_invite", phone, name: registrationCheck.invite.name };
+      } else {
+        // Fallback: send regular message with invite link
+        const inviteCode = registrationCheck.invite.inviteCode;
+        await ctx.runAction(internal.whatsappWebhook.sendWhatsAppMessageDirect, {
+          phone,
+          message: `שלום ${registrationCheck.invite.name}! לחץ כאן להתחברות: https://levsarah.org/invite/${inviteCode}`,
+        });
+        return { action: "invite_link_sent", phone };
       }
     }
 

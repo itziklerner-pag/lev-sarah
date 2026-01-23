@@ -29,34 +29,49 @@ async function storeMagicLinkToken(
   const convexSiteUrl = process.env.CONVEX_SITE_URL;
   const internalSecret = process.env.INTERNAL_API_SECRET;
 
+  console.log("[PhoneAuth] storeMagicLinkToken called", {
+    phone,
+    tokenPrefix: token.substring(0, 8),
+    hasConvexSiteUrl: !!convexSiteUrl,
+    hasInternalSecret: !!internalSecret,
+    convexSiteUrl,
+  });
+
   if (!convexSiteUrl || !internalSecret) {
     console.error(
-      "Missing CONVEX_SITE_URL or INTERNAL_API_SECRET for magic link storage"
+      "[PhoneAuth] Missing CONVEX_SITE_URL or INTERNAL_API_SECRET for magic link storage"
     );
     return false;
   }
 
+  const url = `${convexSiteUrl}/api/internal/store-magic-token`;
+  console.log("[PhoneAuth] Making request to:", url);
+
   try {
-    const response = await fetch(
-      `${convexSiteUrl}/api/internal/store-magic-token`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Internal-Secret": internalSecret,
-        },
-        body: JSON.stringify({ phone, token, returnUrl }),
-      }
-    );
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Secret": internalSecret,
+      },
+      body: JSON.stringify({ phone, token, returnUrl }),
+    });
+
+    const responseText = await response.text();
+    console.log("[PhoneAuth] Store token response:", {
+      status: response.status,
+      ok: response.ok,
+      body: responseText,
+    });
 
     if (!response.ok) {
-      console.error("Failed to store magic link token:", await response.text());
+      console.error("[PhoneAuth] Failed to store magic link token:", responseText);
       return false;
     }
 
     return true;
   } catch (error) {
-    console.error("Error storing magic link token:", error);
+    console.error("[PhoneAuth] Error storing magic link token:", error);
     return false;
   }
 }

@@ -62,6 +62,46 @@ function extractPhoneFromSubject(subject: string | undefined): string | null {
 }
 
 /**
+ * Generate all possible phone number variants for matching
+ */
+function getPhoneVariants(phone: string): string[] {
+  // Remove all non-digits
+  const digits = phone.replace(/\D/g, "");
+
+  const variants = new Set<string>();
+
+  // Add the raw digits
+  variants.add(digits);
+
+  // Add with + prefix
+  variants.add(`+${digits}`);
+
+  // Handle Israeli numbers (972)
+  if (digits.startsWith("972")) {
+    const withoutCountry = digits.slice(3);
+    variants.add(withoutCountry);
+    variants.add(`0${withoutCountry}`);
+    variants.add(`+972${withoutCountry}`);
+  }
+
+  // Handle numbers starting with 0 (Israeli local format)
+  if (digits.startsWith("0")) {
+    const withoutZero = digits.slice(1);
+    variants.add(withoutZero);
+    variants.add(`972${withoutZero}`);
+    variants.add(`+972${withoutZero}`);
+  }
+
+  // Handle US numbers (1)
+  if (digits.startsWith("1") && digits.length === 11) {
+    variants.add(digits.slice(1));
+    variants.add(`+${digits}`);
+  }
+
+  return Array.from(variants);
+}
+
+/**
  * Check if there's a pending invite for the authenticated user's phone
  */
 export const checkInvite = query({
@@ -74,16 +114,62 @@ export const checkInvite = query({
 
     const phone = extractPhoneFromSubject(identity.subject);
     if (!phone) {
+      // Try to get phone from authAccounts table
+      const subjectParts = identity.subject.split("|");
+      const authUserId = subjectParts[0];
+
+      const authAccount = await ctx.db
+        .query("authAccounts")
+        .filter((q) => q.eq(q.field("userId"), authUserId))
+        .first();
+
+      if (!authAccount) {
+        console.log("checkInvite: No auth account found");
+        return null;
+      }
+
+      const accountPhone = (authAccount as any).providerAccountId || (authAccount as any).phoneVerified;
+      if (!accountPhone) {
+        console.log("checkInvite: No phone in auth account");
+        return null;
+      }
+
+      // Use phone from auth account
+      const phoneVariants = getPhoneVariants(accountPhone);
+      console.log(`checkInvite: Checking variants for ${accountPhone}: ${phoneVariants.join(", ")}`);
+
+      for (const variant of phoneVariants) {
+        const invite = await ctx.db
+          .query("invites")
+          .withIndex("by_phone", (q) => q.eq("phone", variant))
+          .first();
+        if (invite) {
+          console.log(`checkInvite: Found invite with phone ${variant}`);
+          return invite;
+        }
+      }
+
+      console.log("checkInvite: No invite found for any variant");
       return null;
     }
 
-    // Find invite by phone
-    const invite = await ctx.db
-      .query("invites")
-      .withIndex("by_phone", (q) => q.eq("phone", phone))
-      .first();
+    // Use phone variants for matching
+    const phoneVariants = getPhoneVariants(phone);
+    console.log(`checkInvite: Checking variants for ${phone}: ${phoneVariants.join(", ")}`);
 
-    return invite;
+    for (const variant of phoneVariants) {
+      const invite = await ctx.db
+        .query("invites")
+        .withIndex("by_phone", (q) => q.eq("phone", variant))
+        .first();
+      if (invite) {
+        console.log(`checkInvite: Found invite with phone ${variant}`);
+        return invite;
+      }
+    }
+
+    console.log("checkInvite: No invite found for any variant");
+    return null;
   },
 });
 
